@@ -78,24 +78,38 @@ export function toLangChainToolCalls(accumulated: AccumulatedToolCall[]): Array<
   return accumulated
     .filter(tc => tc.name) // 过滤掉没有 name 的
     .map(tc => {
-      let args: Record<string, any> = {};
+      let args: Record<string, any> | null = null;
+      let parseSuccess = false;
+
       try {
-        if (tc.args) {
-          args = JSON.parse(tc.args);
-          console.log(
-            `[StreamHelper] Parsed tool call ${tc.name}:`,
-            JSON.stringify(args).slice(0, 200)
-          );
+        if (tc.args && tc.args.trim()) {
+          const parsed = JSON.parse(tc.args);
+          // 检查解析结果是否为有效对象且不为空
+          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            args = parsed;
+            parseSuccess = true;
+            console.log(
+              `[StreamHelper] Parsed tool call ${tc.name}:`,
+              JSON.stringify(args).slice(0, 200)
+            );
+          } else {
+            console.warn(`[StreamHelper] Skipping tool call ${tc.name}: empty or invalid args object`);
+          }
+        } else {
+          console.warn(`[StreamHelper] Skipping tool call ${tc.name}: no args provided`);
         }
       } catch (e) {
         console.error(`[StreamHelper] Tool call args parse error for ${tc.name}:`);
         console.error(`  Raw args string: "${tc.args}"`);
         console.error(`  Error: ${e instanceof Error ? e.message : String(e)}`);
       }
-      return {
+
+      // 返回解析结果，如果失败则标记为 null
+      return parseSuccess ? {
         id: tc.id || `call_${tc.index}`,
         name: tc.name,
-        args,
-      };
-    });
+        args: args!,
+      } : null;
+    })
+    .filter((tc): tc is NonNullable<typeof tc> => tc !== null); // 过滤掉解析失败的
 }

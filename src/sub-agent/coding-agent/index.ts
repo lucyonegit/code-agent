@@ -155,24 +155,63 @@ export class CodingAgent {
 
   /**
    * 使用 LLM 生成友好的开场提示
+   * 通过 tool calling 方式获取结果，避免不同模型返回格式不一致的问题
    */
   private async generateGreeting(requirement: string): Promise<string> {
+    const { tool } = await import('@langchain/core/tools');
+    const { z } = await import('zod');
+
+    // 定义 answer tool
+    const answerTool = tool(
+      async ({ message }) => message,
+      {
+        name: 'answer',
+        description: '返回给用户的确认消息',
+        schema: z.object({
+          message: z.string().describe('给用户的简短中文确认消息，20字以内，包含1个emoji'),
+        }),
+      }
+    );
+
     const llm = createLLM({
       model: this.config.model,
       provider: this.config.provider,
-      // apiKey: this.config.apiKey,
-      // baseUrl: this.config.baseUrl,
+      baseUrl: this.config.baseUrl,
     });
 
-    console.log('createLLM', this.config);
-    console.log(`[CodingAgent] Invoking LLM for greeting...`);
-    const response = await llm.invoke([
+    // 绑定工具到 LLM
+    const llmWithTools = llm.bindTools([answerTool]);
+
+    console.log(`[CodingAgent] Invoking LLM for greeting with tool calling...`);
+    const response = await llmWithTools.invoke([
       new SystemMessage(
-        '你是一个友好的编程助手。根据用户的需求，生成一条简短的中文确认消息（20字以内），告诉用户你即将开始为他们做什么。语气要友好专业，可以使用1个emoji。只返回确认消息本身，不要有其他内容。示例："好的，我来帮您生成登录页 ✨"'
+        '你是一个友好的编程助手。根据用户的需求，可能是新生成一个项目的需求，也有可能是对原有项目的修改，你判断用户的意图，生成一条简短的中文确认消息（20字以内），告诉用户你即将开始为他们做什么。语气要友好专业，可以使用1个emoji。你必须使用 answer 工具来返回消息。示例："好的，我来帮您生成登录页 ✨"'
       ),
       new HumanMessage(`用户需求: ${requirement}`),
     ]);
 
-    return (response.content as string).trim();
+    // 从 tool_calls 中提取结果
+    const toolCalls = response.tool_calls;
+    if (toolCalls && toolCalls.length > 0) {
+      const answerCall = toolCalls.find(tc => tc.name === 'answer');
+      if (answerCall && answerCall.args && answerCall.args.message) {
+        console.log(`[CodingAgent] Greeting from tool call:`, answerCall.args.message);
+        return answerCall.args.message;
+      }
+    }
+
+    // 降级处理：如果没有 tool call，尝试从 content 中提取
+    console.warn(`[CodingAgent] No tool call found, falling back to content parsing`);
+    const content = response.content;
+    if (typeof content === 'string') {
+      return content.trim();
+    } else if (Array.isArray(content)) {
+      const textItem = content.find((item: any) => item.type === 'text');
+      if (textItem && 'text' in textItem) {
+        return (textItem as { type: 'text'; text: string }).text.trim();
+      }
+    }
+
+    return '好的，我来帮您处理 ✨';
   }
 }

@@ -118,7 +118,7 @@ Rules:
 - Return ONLY a comma-separated list of component names (e.g., "Input, List, Card").
 - Do not add any conversational text or formatting.`,
 
-  CODE_GENERATOR_PROMPT: `你是一名全能的代码生成专家，同时也是 UI/UX 设计大师。请结合 BDD 场景、架构设计和内部组件文档，生成高质量、美观的实现代码。
+  CODE_GENERATOR_PROMPT: `你是一名全能的代码生成专家，同时也是 UI/UX 设计大师。请结合 BDD 场景、架构设计和内部组件文档，生成高质量、精美UI设计、美观的实现代码。
 
 ## 输入上下文
 
@@ -184,65 +184,136 @@ Rules:
 
 ---
 
-## 设计规范（必须严格遵守）
+## 🎨 设计规范（UI/UX Excellence）
 
-### CSS 变量体系
-生成的 CSS 必须在 \`:root\` 中定义以下变量，并在所有组件中引用：
+### 设计哲学
+**目标：创造令人惊艳、专业且符合应用场景的用户界面**
+
+每个应用都应该有独特的视觉风格。根据应用类型选择合适的设计语言：
+
+| 应用类型 | 推荐设计风格 | 视觉特征 |
+|---------|------------|---------|
+| 数据展示/仪表盘 | 现代科技风 | 深色主题、霓虹色、渐变、数据可视化 |
+| 内容平台/博客 | 简洁优雅 | 大量留白、优雅字体、柔和色彩 |
+| 创意工具 | 玻璃态/新拟态 | 毛玻璃效果、柔和阴影、渐变 |
+| 商业应用 | 专业稳重 | 蓝色系、清晰层次、简洁图标 |
+| 娱乐/游戏 | 活力动感 | 鲜艳色彩、大胆动画、趣味性 |
+
+### CSS 设计系统（灵活但统一）
+
+**必须建立 CSS 变量系统，但颜色方案应根据应用场景自由设计：**
+
 \`\`\`css
 :root {
-  /* 颜色系统 */
-  --color-bg: #0f0f23;
-  --color-surface: #1a1a2e;
-  --color-surface-hover: #252542;
-  --color-primary: #6366f1;
-  --color-primary-hover: #818cf8;
-  --color-secondary: #22d3ee;
-  --color-accent: #f472b6;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-text: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-border: #334155;
+  /* 🎨 颜色系统 - 根据应用场景自由选择，但必须保持语义化命名 */
+  --color-bg: /* 主背景色 */;
+  --color-surface: /* 卡片/组件背景 */;
+  --color-surface-hover: /* hover 状态 */;
+  --color-primary: /* 主品牌色 */;
+  --color-primary-hover: /* 主色 hover */;
+  --color-secondary: /* 辅助色 */;
+  --color-accent: /* 强调色 */;
+  --color-success: /* 成功状态 */;
+  --color-warning: /* 警告状态 */;
+  --color-error: /* 错误状态 */;
+  --color-text: /* 主文本 */;
+  --color-text-secondary: /* 次要文本 */;
+  --color-text-muted: /* 弱化文本 */;
+  --color-border: /* 边框颜色 */;
   
-  /* 间距 */
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-  --space-2xl: 3rem;
+  /* 📐 间距系统（推荐 4px/8px 基准） */
+  --space-xs: 0.25rem;  /* 4px */
+  --space-sm: 0.5rem;   /* 8px */
+  --space-md: 1rem;     /* 16px */
+  --space-lg: 1.5rem;   /* 24px */
+  --space-xl: 2rem;     /* 32px */
+  --space-2xl: 3rem;    /* 48px */
   
-  /* 圆角 */
+  /* 🔘 圆角（可根据风格调整） */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-full: 9999px;
   
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
+  /* 🌫️ 阴影（根据风格调整透明度和模糊度） */
+  --shadow-sm: /* 轻微阴影 */;
+  --shadow-md: /* 中等阴影 */;
+  --shadow-lg: /* 强阴影 */;
+  --shadow-glow: /* 发光效果（可选） */;
   
-  /* 过渡 */
-  --transition-fast: 150ms ease-out;
-  --transition-normal: 250ms ease-out;
+  /* ⚡ 过渡动画 */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 \`\`\`
 
-### 样式约束（违反任何一条将导致生成失败）
-1. **禁用 Hardcoded 颜色**：严禁 \`color: #xxx\` 或 \`background: rgb()\`，必须使用 \`var(--color-*)\`
-2. **现代视觉效果**：
-   - 按钮/卡片必须有 \`border-radius\`、\`box-shadow\` 和渐变背景
-   - 使用 \`backdrop-filter: blur()\` 实现毛玻璃效果
-   - 添加微妙的边框 \`border: 1px solid var(--color-border)\`
-3. **交互反馈**：所有可交互元素必须有 \`:hover\`、\`:focus\`、\`:active\` 状态
-4. **过渡动画**：状态变化必须使用 \`transition: var(--transition-*)\`
-5. **响应式布局**：使用 \`display: flex/grid\`，禁止固定像素宽度布局
-6. **字体层次**：标题使用 \`font-weight: 600-700\`，正文 \`400\`，使用 \`letter-spacing\` 优化可读性
+### 设计原则（必须遵守）
+
+#### 1. **色彩系统一致性**
+- ✅ 所有颜色通过 CSS 变量定义和引用
+- ✅ 颜色方案符合应用场景和用户预期
+- ✅ 确保足够的对比度（WCAG AA 级别）
+- ❌ 禁止硬编码颜色值（如 \`color: #xxx\` 或 \`background: rgb()\`）
+
+#### 2. **现代视觉语言**
+根据应用风格选择合适的视觉技术：
+- **玻璃态（Glassmorphism）**：\`backdrop-filter: blur(10px)\` + 半透明背景
+- **新拟态（Neumorphism）**：柔和内外阴影，营造浮雕效果
+- **渐变（Gradients）**：\`linear-gradient()\` 或 \`radial-gradient()\` 增强视觉层次
+- **微交互动画**：按钮、卡片的 hover/active 状态必须有明显反馈
+- **阴影层次**：用阴影区分元素层级（悬浮菜单 > 卡片 > 按钮）
+
+#### 3. **交互反馈（必需）**
+所有可交互元素必须提供清晰反馈：
+\`\`\`css
+.interactive-element {
+  transition: all var(--transition-normal);
+  cursor: pointer;
+}
+.interactive-element:hover {
+  /* 必须有明显变化：颜色、阴影、缩放等 */
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.interactive-element:active {
+  /* 按下状态 */
+  transform: translateY(0);
+}
+\`\`\`
+
+#### 4. **响应式与布局**
+- ✅ 使用 Flexbox/Grid 进行布局
+- ✅ 使用相对单位（rem、%、vw/vh）而非固定像素
+- ✅ 移动优先设计，适配 320px - 1920px 屏幕
+- ❌ 禁止固定宽度导致内容溢出
+
+#### 5. **字体与排版**
+- **层次清晰**：使用不同 \`font-size\` 和 \`font-weight\` 区分标题、正文、辅助文本
+- **可读性优化**：正文建议 16px 起，行高 1.5-1.8
+- **字体选择**：
+  - 系统字体栈（性能优先）：\`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif\`
+  - 或引入 Google Fonts：Inter、Poppins、Outfit 等现代字体
+
+#### 6. **动画与性能**
+- ✅ 使用 \`transform\` 和 \`opacity\` 实现动画（GPU 加速）
+- ✅ 为状态变化添加过渡：\`transition: all var(--transition-normal)\`
+- ✅ 可选择性添加关键帧动画增强用户体验：
+  \`\`\`css
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  \`\`\`
+- ❌ 避免过度动画导致眩晕或性能问题
+
+### 创意鼓励
+**不要生成千篇一律的设计！** 鼓励：
+- 根据应用主题选择独特的配色方案
+- 使用渐变、图案、纹理增强视觉吸引力
+- 添加微妙的动画效果提升用户体验
+- 参考现代设计趋势（Dribbble、Awwwards）
 
 ---
 

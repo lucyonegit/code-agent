@@ -231,15 +231,31 @@ export function createWriteFileTool(projectDir: string): Tool {
         const parentDir = dirname(filePath);
         ensureDir(parentDir);
 
-        // 处理转义字符：将 LLM 返回的转义字符转换为实际字符
-        // LLM 有时会在字符串中保留 JSON 转义形式，如 \" 而不是真正的 "
+        // 处理转义字符：修复 LLM 可能产生的双重转义问题
+        // LLM 有时会在 JSON 参数中额外转义，导致 \\n 而不是 \n
         let processedContent = args.content;
 
-        // 策略1: 如果没有真正的换行符但有转义的 \n，进行完整反转义
-        const hasNoRealNewlines = !processedContent.includes('\n');
-        const hasEscapedNewlines = processedContent.includes('\\n');
+        // 检测双重转义的模式：\\n \\t \\r \\" 等
+        const hasDoubleEscapedNewline = processedContent.includes('\\\\n');
+        const hasDoubleEscapedTab = processedContent.includes('\\\\t');
+        const hasDoubleEscapedQuote = processedContent.includes('\\\\"');
+        const hasDoubleEscape = hasDoubleEscapedNewline || hasDoubleEscapedTab || hasDoubleEscapedQuote;
 
-        if (hasNoRealNewlines && hasEscapedNewlines) {
+        if (hasDoubleEscape) {
+          console.log(`[fs:write_file] 检测到双重转义字符，进行修复: ${args.path}`);
+          processedContent = processedContent
+            .replace(/\\\\n/g, '\n')
+            .replace(/\\\\t/g, '\t')
+            .replace(/\\\\r/g, '\r')
+            .replace(/\\\\"/g, '"')
+            .replace(/\\\\'/g, "'");
+        }
+
+        // 策略1: 如果没有真正的换行符但有单层转义 \n，进行反转义
+        const hasNoRealNewlines = !processedContent.includes('\n');
+        const hasSingleEscapedNewlines = processedContent.includes('\\n');
+
+        if (hasNoRealNewlines && hasSingleEscapedNewlines) {
           console.log(`[fs:write_file] 检测到完整转义内容，进行反转义: ${args.path}`);
           processedContent = processedContent
             .replace(/\\n/g, '\n')
@@ -249,8 +265,7 @@ export function createWriteFileTool(projectDir: string): Tool {
             .replace(/\\'/g, "'")
             .replace(/\\\\/g, '\\');
         } else {
-          // 策略2: 即使有真正的换行符，也要检查是否有残留的转义引号
-          // 这种情况通常是 LLM 返回的混合内容
+          // 策略2: 检查残留的转义引号
           if (processedContent.includes('\\"')) {
             console.log(`[fs:write_file] 检测到残留转义引号，进行清理: ${args.path}`);
             processedContent = processedContent.replace(/\\"/g, '"');

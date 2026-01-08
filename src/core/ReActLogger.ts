@@ -6,7 +6,11 @@
  * - 带时间戳的格式化输出
  * - 终端彩色输出
  * - Emoji 前缀增强可读性
+ * - 支持日志持久化到文件
  */
+
+import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'fs';
+import { dirname, extname, basename, join } from 'path';
 
 /**
  * 日志级别枚举
@@ -119,15 +123,76 @@ function formatData(data: unknown, maxLength = 500): string {
 
 /**
  * ReActLogger 类
- * 提供分级日志输出功能
+ * 提供分级日志输出功能，支持日志持久化
  */
 export class ReActLogger {
   private level: LogLevel;
   private prefix: string;
+  private logFilePath: string | null = null;
+  private sessionId: string;
 
-  constructor(level: LogLevel = LogLevel.INFO, prefix = 'ReAct') {
+  constructor(level: LogLevel = LogLevel.INFO, prefix = 'ReAct', logFilePath?: string) {
     this.level = level;
     this.prefix = prefix;
+    this.sessionId = this.generateSessionId();
+
+    if (logFilePath) {
+      this.initLogFile(logFilePath);
+    }
+  }
+
+  /**
+   * 生成会话 ID（用于日志文件名）
+   */
+  private generateSessionId(): string {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  /**
+   * 初始化日志文件
+   */
+  private initLogFile(basePath: string): void {
+    // 确保目录存在
+    const dir = dirname(basePath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    // 生成带会话 ID 的文件名
+    const ext = extname(basePath) || '.txt';
+    const base = basename(basePath, ext);
+    const filename = `${base}_${this.sessionId}${ext}`;
+    this.logFilePath = join(dir, filename);
+
+    // 写入日志头
+    const header = [
+      `${'='.repeat(60)}`,
+      `ReAct Session Log`,
+      `Session ID: ${this.sessionId}`,
+      `Started: ${new Date().toISOString()}`,
+      `Log Level: TRACE (All levels recorded)`,
+      `${'='.repeat(60)}`,
+      '',
+    ].join('\n');
+
+    writeFileSync(this.logFilePath, header, 'utf-8');
+    console.log(`[ReActLogger] Log file created: ${this.logFilePath}`);
+  }
+
+  /**
+   * 写入日志到文件
+   */
+  private writeToFile(line: string): void {
+    if (!this.logFilePath) return;
+    appendFileSync(this.logFilePath, line + '\n', 'utf-8');
+  }
+
+  /**
+   * 获取日志文件路径
+   */
+  getLogFilePath(): string | null {
+    return this.logFilePath;
   }
 
   /**
@@ -155,15 +220,32 @@ export class ReActLogger {
    * 格式化并输出日志
    */
   private log(level: Exclude<LogLevel, LogLevel.SILENT>, message: string, data?: unknown): void {
+    const config = LevelConfig[level];
+    const timestamp = formatTimestamp();
+
+    // 构建纯文本日志行（用于文件）
+    const plainLogLine = `[${timestamp}] [${config.label}] [${this.prefix}] ${config.emoji} ${message}`;
+
+    // 始终写入文件（记录所有级别）
+    if (this.logFilePath) {
+      this.writeToFile(plainLogLine);
+      if (data !== undefined && data !== null) {
+        const formattedData = formatData(data, 2000); // 文件中记录更多内容
+        if (formattedData) {
+          const lines = formattedData.split('\n');
+          for (const line of lines) {
+            this.writeToFile(`    │ ${line}`);
+          }
+        }
+      }
+    }
+
+    // 控制台输出（受日志级别控制）
     if (!this.shouldLog(level)) {
       return;
     }
 
-    const config = LevelConfig[level];
-    const timestamp = formatTimestamp();
-
-    // 构建日志行
-    // [时间戳] [级别] [前缀] emoji 消息
+    // 构建带颜色的日志行
     const timestampPart = `${Colors.gray}[${timestamp}]${Colors.reset}`;
     const levelPart = `${config.color}[${config.label}]${Colors.reset}`;
     const prefixPart = `${Colors.cyan}[${this.prefix}]${Colors.reset}`;
@@ -222,10 +304,15 @@ export class ReActLogger {
    * 分组开始 - 用于标记逻辑块的开始
    */
   group(label: string): void {
+    const timestamp = formatTimestamp();
+    const plainLine = `[${timestamp}] [${this.prefix}] ┌─ ${label}`;
+
+    // 始终写入文件
+    this.writeToFile(plainLine);
+
     if (!this.shouldLog(LogLevel.DEBUG)) {
       return;
     }
-    const timestamp = formatTimestamp();
     console.log(
       `${Colors.gray}[${timestamp}]${Colors.reset} ${Colors.cyan}[${this.prefix}]${Colors.reset} ┌─ ${Colors.bold}${label}${Colors.reset}`
     );
@@ -235,11 +322,16 @@ export class ReActLogger {
    * 分组结束 - 用于标记逻辑块的结束
    */
   groupEnd(label?: string): void {
+    const timestamp = formatTimestamp();
+    const endLabel = label ? ` ${label}` : '';
+    const plainLine = `[${timestamp}] [${this.prefix}] └─${endLabel}`;
+
+    // 始终写入文件
+    this.writeToFile(plainLine);
+
     if (!this.shouldLog(LogLevel.DEBUG)) {
       return;
     }
-    const timestamp = formatTimestamp();
-    const endLabel = label ? ` ${label}` : '';
     console.log(
       `${Colors.gray}[${timestamp}]${Colors.reset} ${Colors.cyan}[${this.prefix}]${Colors.reset} └─${endLabel}`
     );
@@ -249,10 +341,15 @@ export class ReActLogger {
    * 输出分隔线
    */
   separator(): void {
+    const line = '─'.repeat(60);
+
+    // 始终写入文件
+    this.writeToFile(line);
+
     if (!this.shouldLog(LogLevel.INFO)) {
       return;
     }
-    console.log(`${Colors.gray}${'─'.repeat(60)}${Colors.reset}`);
+    console.log(`${Colors.gray}${line}${Colors.reset}`);
   }
 
   /**
@@ -260,6 +357,11 @@ export class ReActLogger {
    * 不添加时间戳和前缀，直接写入标准输出
    */
   streamChunk(text: string): void {
+    // 始终写入文件
+    if (this.logFilePath) {
+      appendFileSync(this.logFilePath, text, 'utf-8');
+    }
+
     if (!this.shouldLog(LogLevel.TRACE)) {
       return;
     }

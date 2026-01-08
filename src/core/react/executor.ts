@@ -25,6 +25,8 @@ import { formatToolDescriptions } from './utils.js';
 import { ToolHandler } from './tool-handler.js';
 import { StreamHandler } from './stream-handler.js';
 
+import { join } from 'path';
+
 export class ReActExecutor {
   private config: {
     model: string;
@@ -44,7 +46,10 @@ export class ReActExecutor {
 
   constructor(config: ReActConfig) {
     const logLevel = (config.logLevel ?? LogLevel.INFO) as LogLevel;
-    this.logger = new ReActLogger(logLevel, 'ReAct');
+
+    // 日志文件路径：agent 根目录下的 logs 文件夹
+    const logFilePath = join(process.cwd(), 'logs', 'react_session.txt');
+    this.logger = new ReActLogger(logLevel, 'ReAct', logFilePath);
 
     this.config = {
       model: config.model,

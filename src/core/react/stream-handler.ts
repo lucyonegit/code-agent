@@ -23,7 +23,7 @@ export class StreamHandler {
   constructor(
     private logger: ReActLogger,
     private onMessage?: ReActInput['onMessage']
-  ) {}
+  ) { }
 
   /**
    * 读取流并返回累积结果
@@ -48,9 +48,8 @@ export class StreamHandler {
       if (chunk.content) {
         const text = typeof chunk.content === 'string' ? chunk.content : '';
         if (text) {
-          // TRACE 级别：流式 chunk 输出
+          // TRACE 级别：流式 chunk 输出（仅 streamChunk，不单独记录日志）
           this.logger.streamChunk(text);
-          this.logger.trace('💭 Chunk', { text });
           accumulatedContent += text;
           await this.emitEvent({
             type: 'thought',

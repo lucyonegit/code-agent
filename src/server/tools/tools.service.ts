@@ -1,18 +1,19 @@
 /**
- * 预定义工具注册
+ * 工具注册服务
  */
 
+import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import type { Tool } from '../../types/index.js';
+import type { Tool } from '../../types';
 import {
   createRagSearchTool,
   createGetComponentListTool,
-} from '../../sub-agent/coding-agent/tools/rag.js';
+} from '../../sub-agent/coding-agent/tools/rag';
 
 /**
  * 预定义工具集合
  */
-export const AVAILABLE_TOOLS: Record<string, Tool> = {
+const AVAILABLE_TOOLS: Record<string, Tool> = {
   get_weather: {
     name: 'get_weather',
     description: '获取指定位置的当前天气信息',
@@ -21,7 +22,6 @@ export const AVAILABLE_TOOLS: Record<string, Tool> = {
       unit: z.enum(['celsius', 'fahrenheit']).nullable().optional().describe('温度单位'),
     }),
     execute: async args => {
-      // 模拟天气 API
       return JSON.stringify({
         location: args.location,
         temperature: 25,
@@ -54,7 +54,6 @@ export const AVAILABLE_TOOLS: Record<string, Tool> = {
       query: z.string().describe('搜索关键词'),
     }),
     execute: async args => {
-      // 模拟搜索 API
       return JSON.stringify([
         { title: `"${args.query}" 的搜索结果`, snippet: '这是一个示例搜索结果...' },
       ]);
@@ -65,9 +64,31 @@ export const AVAILABLE_TOOLS: Record<string, Tool> = {
   get_component_list: createGetComponentListTool(),
 };
 
-/**
- * 根据名称获取工具列表
- */
-export function getToolsByNames(names: string[]): Tool[] {
-  return names.filter(name => AVAILABLE_TOOLS[name]).map(name => AVAILABLE_TOOLS[name]);
+@Injectable()
+export class ToolsService {
+  /**
+   * 获取所有可用工具的简要信息
+   */
+  getToolsList() {
+    return Object.keys(AVAILABLE_TOOLS).map(name => ({
+      name,
+      description: AVAILABLE_TOOLS[name].description,
+    }));
+  }
+
+  /**
+   * 根据名称获取工具列表
+   */
+  getToolsByNames(names: string[]): Tool[] {
+    return names
+      .filter(name => AVAILABLE_TOOLS[name])
+      .map(name => AVAILABLE_TOOLS[name]);
+  }
+
+  /**
+   * 获取所有可用工具
+   */
+  getAllTools(): Record<string, Tool> {
+    return AVAILABLE_TOOLS;
+  }
 }

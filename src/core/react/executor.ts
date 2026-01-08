@@ -17,6 +17,7 @@ import {
 
 import {
   DEFAULT_REACT_PROMPT,
+  DEFAULT_MAX_ITERATIONS,
   defaultFinalAnswerTool,
   defaultUserMessageTemplate,
   FINAL_ANSWER_PROMPT_SUFFIX,
@@ -54,7 +55,7 @@ export class ReActExecutor {
     this.config = {
       model: config.model,
       provider: config.provider ?? 'openai',
-      maxIterations: config.maxIterations ?? 20,
+      maxIterations: config.maxIterations ?? DEFAULT_MAX_ITERATIONS,
       systemPrompt: config.systemPrompt ?? DEFAULT_REACT_PROMPT,
       temperature: config.temperature ?? 0,
       streaming: config.streaming ?? false,

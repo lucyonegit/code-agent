@@ -7,7 +7,7 @@ export {
   INCREMENTAL_SYSTEM_PROMPT,
   buildUserPrompt,
   buildIncrementalUserPrompt,
-} from './prompts';
+} from '../../config/prompt';
 export { topologicalSort, fetchRagContext, extractKeywords } from './utils';
 export { createFinishToolAsFinalAnswer } from './finish-tool';
 export { handleNpmDependencies, parseNpmDependencies } from './npm-handler';

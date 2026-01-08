@@ -6,6 +6,18 @@ import { z } from 'zod';
 import { type Tool } from '../../types/index.js';
 
 /**
+ * 默认配置常量
+ */
+/** 默认最大迭代次数 */
+export const DEFAULT_MAX_ITERATIONS = 30;
+/** 默认最大输出 token 数（防止输出截断） */
+export const DEFAULT_MAX_TOKENS = 8192;
+/** Architect 工具推荐的 max_tokens（架构设计输出较大） */
+export const ARCHITECT_MAX_TOKENS = 4096;
+/** CodeGen 工具推荐的 max_tokens（代码生成输出最大） */
+export const CODEGEN_MAX_TOKENS = 16384;
+
+/**
  * 默认 ReAct 系统提示词
  */
 export const DEFAULT_REACT_PROMPT = `你是一个超级聪明的AI助手，使用 ReAct（推理 + 行动）方法来解决问题。

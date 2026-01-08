@@ -29,6 +29,8 @@ export interface LLMConfig {
   baseUrl?: string;
   /** 是否启用流式输出 */
   streaming?: boolean;
+  /** 最大输出 token 数（可选，防止输出被截断） */
+  maxTokens?: number;
 }
 
 /**
@@ -46,6 +48,7 @@ export function createLLM(config: LLMConfig): ChatOpenAI {
     temperature: config.temperature ?? 0,
     apiKey: apiKey,
     streaming: config.streaming,
+    ...(config.maxTokens && { maxTokens: config.maxTokens }),
   };
 
   switch (config.provider) {

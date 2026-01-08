@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createLLM } from '../../../core/BaseLLM';
+import { ARCHITECT_MAX_TOKENS } from '../../../core/react/constants';
 import { CODING_AGENT_PROMPTS } from '../config/prompt';
 import type { Tool, LLMProvider } from '../../../types/index';
 import {
@@ -66,6 +67,7 @@ scenarios 数组中每个场景必须包含：id, title, given, when, then 字�
         provider: config.provider,
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
+        maxTokens: ARCHITECT_MAX_TOKENS,
       });
 
       // LangChain tool 调用返回的 args 总是对象形式，需要用对象包装

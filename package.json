@@ -12,6 +12,7 @@
     "example:basic": "npx tsx src/examples/basic-usage.ts",
     "example:planner": "npx tsx src/examples/planner-usage.ts",
     "serve": "npx tsx src/server/main.ts",
+    "serve:dev": "npx tsx --watch src/server/main.ts",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,json}\"",

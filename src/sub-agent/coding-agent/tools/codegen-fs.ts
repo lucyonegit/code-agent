@@ -21,7 +21,16 @@ import {
   type ArchitectureResult,
 } from './schemas';
 import type { GeneratedFile, CodingAgentEvent } from '../../types/index';
-import { createWriteFileTool, createReadFileTool, createDeleteFileTool, getProjectDir } from './fs';
+import {
+  createWriteFileTool,
+  createReadFileTool,
+  createDeleteFileTool,
+  createListFilesTool,
+  createGrepFilesTool,
+  createReadFileLinesTool,
+  createListSymbolsTool,
+  getProjectDir,
+} from './fs';
 import { existsSync, cpSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { LogLevel } from '../../../core/ReActLogger';
@@ -194,11 +203,23 @@ export function createFsCodeGenTool(
       console.log(`[FsCodeGen] Project directory: ${tempDir}`);
 
       // 创建 fs 工具（绑定到项目目录）
-      const fsTools: Tool[] = [
+      // 基础工具：read/write/delete
+      const baseTools: Tool[] = [
         createWriteFileTool(tempDir),
         createReadFileTool(tempDir),
         createDeleteFileTool(tempDir),
       ];
+
+      // 增量模式：添加搜索和精准读取工具
+      const fsTools: Tool[] = isIncrementalMode
+        ? [
+          ...baseTools,
+          createListFilesTool(tempDir),
+          createGrepFilesTool(tempDir),
+          createReadFileLinesTool(tempDir),
+          createListSymbolsTool(tempDir),
+        ]
+        : baseTools;
 
       // 获取 RAG 上下文
       let ragContext = '';

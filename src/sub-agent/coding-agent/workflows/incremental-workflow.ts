@@ -5,8 +5,6 @@
 
 import { createFsCodeGenTool } from '../tools/codegen-fs';
 import { getProjectTree } from '../services/template-generator';
-import { createLLM } from '../../../core/BaseLLM';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import type {
   CodingAgentConfig,
   CodingAgentInput,
@@ -81,79 +79,22 @@ function collectFilesFromTree(
 }
 
 /**
- * 分析需要修改的文件
+ * 构建最小增量架构（占位结构，让 LLM 自主通过 grep 决定修改哪些文件）
  */
-async function analyzeFilesToModify(
-  requirement: string,
-  projectFiles: GeneratedFile[],
-  llmConfig: IncrementalWorkflowContext['llmConfig']
-): Promise<string[]> {
-  // 构建文件列表供 LLM 分析
-  const fileListText = projectFiles.map(f => `- ${f.path}`).join('\n');
-
-  const llm = createLLM({
-    model: llmConfig.model,
-    provider: llmConfig.provider,
-    apiKey: llmConfig.apiKey,
-    baseUrl: llmConfig.baseUrl,
-  });
-
-  const analysisResponse = await llm.invoke([
-    new SystemMessage(`你是代码修改分析专家。根据用户需求，分析需要修改哪些文件。
-只返回需要修改的文件路径列表，每行一个路径。如果需要新建文件，也列出路径。
-不要返回任何解释，只返回文件路径。`),
-    new HumanMessage(`现有文件：
-${fileListText}
-
-用户修改需求：${requirement}
-
-请列出需要修改或新建的文件路径（每行一个）：`),
-  ]);
-
-  const filesToModify = (analysisResponse.content as string)
-    .split('\n')
-    .map(line => line.trim().replace(/^[-*•]\s*/, ''))
-    .filter(line => line.length > 0 && line.startsWith('src/'));
-
-  console.log(`[IncrementalWorkflow] LLM decided to modify:`, filesToModify);
-
-  return filesToModify;
-}
-
-/**
- * 构建增量架构
- */
-function buildIncrementalArchitecture(
-  filesToModify: string[],
-  requirement: string
-): ArchitectureFile[] {
-  const architecture = filesToModify.map(filePath => ({
-    path: filePath,
-    type: 'component' as const,
-    description: `修改: ${requirement}`,
-    bdd_references: ['scenario_incremental'],
-    status: 'pending_generation' as const,
-    dependencies: [] as { path: string; import: string[] }[],
-    rag_context_used: null,
-    content: null,
-  }));
-
-  // 如果 LLM 没有识别到任何文件，默认修改 App.tsx
-  if (architecture.length === 0) {
-    console.log('[IncrementalWorkflow] No files identified, defaulting to App.tsx');
-    architecture.push({
-      path: 'src/App.tsx',
+function buildMinimalArchitecture(requirement: string): ArchitectureFile[] {
+  // 只返回一个占位架构，实际修改由 LLM 通过 grep_files 自主决定
+  return [
+    {
+      path: 'src/App.tsx', // 占位，LLM 会自行决定真正需要修改的文件
       type: 'component' as const,
-      description: `修改: ${requirement}`,
+      description: `增量修改: ${requirement}`,
       bdd_references: ['scenario_incremental'],
       status: 'pending_generation' as const,
       dependencies: [] as { path: string; import: string[] }[],
       rag_context_used: null,
       content: null,
-    });
-  }
-
-  return architecture;
+    },
+  ];
 }
 
 /**
@@ -216,15 +157,10 @@ export async function runIncrementalWorkflow(
     },
   ];
 
-  // 分析需要修改的文件
-  const filesToModify = await analyzeFilesToModify(requirement, projectFiles, llmConfig);
+  // 构建最小架构（让 LLM 自主决定修改哪些文件）
+  const incrementalArchitecture = buildMinimalArchitecture(requirement);
 
-  // 构建增量架构
-  const incrementalArchitecture = buildIncrementalArchitecture(filesToModify, requirement);
-
-  console.log(
-    `[IncrementalWorkflow] Incremental mode: modifying ${incrementalArchitecture.length} file(s)`
-  );
+  console.log(`[IncrementalWorkflow] Incremental mode: LLM will autonomously determine files to modify`);
 
   // 执行代码生成
   const rawResult = await codeGenTool.execute({

@@ -1,0 +1,446 @@
+/**
+ * PlannerExecutor - 双循环规划架构
+ *
+ * 实现 Planner + ReAct 两层循环：
+ * - 外层循环：Planner 生成和调整计划
+ * - 内层循环：ReActExecutor 执行每个步骤
+ *
+ * 这是一个业务无关的基础架构组件。
+ * 所有提示词和消息都可通过 PlannerConfig 配置。
+ */
+
+import { createLLM } from './BaseLLM.js';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { z } from 'zod';
+import { ReActExecutor } from './react/index.js';
+import {
+  PlanSchema,
+  type Plan,
+  type PlanStep,
+  type PlannerConfig,
+  type PlannerInput,
+  type PlannerResult,
+  type Tool,
+  type LLMProvider,
+} from '../types/index.js';
+
+/**
+ * 计划优化输出的 Zod schema
+ */
+const PlanRefinementSchema = z.object({
+  shouldReplan: z.boolean().describe('计划是否需要调整'),
+  reasoning: z.string().describe('决策的解释'),
+  updatedSteps: z
+    .array(
+      z.object({
+        id: z.string(),
+        description: z.string(),
+        requiredTools: z.array(z.string()).nullish(),
+        status: z.enum(['pending', 'skipped']).nullish(),
+      })
+    )
+    .nullish()
+    .describe('如果需要重规划，更新后的剩余步骤'),
+});
+
+type PlanRefinement = z.infer<typeof PlanRefinementSchema>;
+
+/**
+ * 默认规划器系统提示词（导出供外部使用）
+ */
+export const DEFAULT_PLANNER_PROMPT = `你是一个战略规划 AI。你的工作是将复杂目标分解为可执行的步骤。
+
+对于每个目标，创建一个包含以下内容的计划：
+1. 清晰、具体的步骤，可以独立执行
+2. 每个步骤适当的工具分配
+3. 必要时的逻辑排序和依赖关系
+
+返回一个包含以下内容的 JSON 对象：
+- goal: 总体目标
+- steps: 步骤数组，每个步骤包含 id、description、requiredTools（可选）、dependencies（可选）
+- reasoning: 选择此计划的理由
+
+保持步骤专注且可实现。每个步骤应该能够被拥有指定工具的 AI agent 完成。`;
+
+/**
+ * 默认重规划系统提示词（导出供外部使用）
+ */
+export const DEFAULT_REFINE_PROMPT = `你是一个战略规划 AI。根据已完成步骤的执行结果，决定剩余计划是否需要调整。
+
+考虑：
+1. 步骤是否产生了预期结果？
+2. 剩余步骤是否仍然相关？
+3. 是否应该添加、修改或跳过某些步骤？
+
+返回一个包含以下内容的 JSON 对象：
+- shouldReplan: 布尔值，表示是否需要更改
+- reasoning: 决策的解释
+- updatedSteps:（如果重规划）更新后的剩余步骤列表`;
+
+/**
+ * 默认汇总系统提示词（导出供外部使用）
+ */
+export const DEFAULT_SUMMARY_PROMPT = `你是一个有帮助的助手。将已完成计划的结果汇总为给用户的清晰、全面的回复。`;
+
+/**
+ * 默认计划生成消息模板
+ */
+export const defaultPlanMessageTemplate = (goal: string, toolDescriptions: string): string =>
+  `目标: ${goal}\n\n可用工具:\n${toolDescriptions}\n\n创建一个分步计划来实现这个目标。你必须调用 generate_plan 工具来返回你的计划。`;
+
+/**
+ * 默认重规划消息模板
+ */
+export const defaultRefineMessageTemplate = (
+  plan: Plan,
+  latestResult: string,
+  tools: Tool[]
+): string => {
+  const completedSteps = plan.steps.filter(s => s.status === 'done');
+  const pendingSteps = plan.steps.filter(s => s.status === 'pending');
+
+  return `目标: ${plan.goal}
+
+已完成步骤:
+${completedSteps.map(s => `- ${s.id}: ${s.description}\n  结果: ${s.result}`).join('\n')}
+
+最新结果: ${latestResult}
+
+剩余步骤:
+${pendingSteps.map(s => `- ${s.id}: ${s.description}`).join('\n')}
+
+可用工具: ${tools.map(t => t.name).join(', ')}
+
+根据最新执行结果，剩余计划是否需要调整？`;
+};
+
+/**
+ * 默认汇总消息模板
+ */
+export const defaultSummaryMessageTemplate = (plan: Plan): string => {
+  const stepSummaries = plan.steps
+    .filter(s => s.status === 'done')
+    .map(s => `步骤 ${s.id}: ${s.description}\n结果: ${s.result}`)
+    .join('\n\n');
+
+  return `原始目标: ${plan.goal}\n\n已完成步骤:\n${stepSummaries}\n\n提供一个回答用户原始目标的最终摘要。`;
+};
+
+/**
+ * PlannerExecutor - 实现 Planner + ReAct 双循环架构
+ */
+export class PlannerExecutor {
+  private config: {
+    plannerModel: string;
+    executorModel: string;
+    provider: LLMProvider;
+    maxIterationsPerStep: number;
+    maxRePlanAttempts: number;
+    apiKey?: string;
+    baseUrl?: string;
+    systemPrompt: string;
+    refinePrompt: string;
+    summaryPrompt: string;
+    planMessageTemplate: (goal: string, toolDescriptions: string) => string;
+    refineMessageTemplate: (plan: Plan, latestResult: string, tools: Tool[]) => string;
+    summaryMessageTemplate: (plan: Plan) => string;
+    executorConfig?: Partial<PlannerConfig['executorConfig']>;
+  };
+
+  constructor(config: PlannerConfig) {
+    this.config = {
+      plannerModel: config.plannerModel,
+      executorModel: config.executorModel,
+      provider: config.provider ?? 'openai',
+      maxIterationsPerStep: config.maxIterationsPerStep ?? 10,
+      maxRePlanAttempts: config.maxRePlanAttempts ?? 3,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      systemPrompt: config.systemPrompt ?? DEFAULT_PLANNER_PROMPT,
+      refinePrompt: config.refinePrompt ?? DEFAULT_REFINE_PROMPT,
+      summaryPrompt: config.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT,
+      planMessageTemplate: config.planMessageTemplate ?? defaultPlanMessageTemplate,
+      refineMessageTemplate: config.refineMessageTemplate ?? defaultRefineMessageTemplate,
+      summaryMessageTemplate: config.summaryMessageTemplate ?? defaultSummaryMessageTemplate,
+      executorConfig: config.executorConfig,
+    };
+  }
+
+  /**
+   * 运行 Planner + ReAct
+   */
+  async run(input: PlannerInput): Promise<PlannerResult> {
+    const { goal, tools, onMessage, onPlanUpdate } = input;
+
+    try {
+      // 步骤 1：生成初始计划
+      const plan = await this.generatePlan(goal, tools);
+
+      // 步骤 2：执行计划步骤
+      const rePlanAttempts = 0;
+
+      while (!this.isPlanComplete(plan)) {
+        const currentStep = this.getNextStep(plan);
+        if (!currentStep) {
+          break;
+        }
+
+        // 将步骤标记为进行中
+        currentStep.status = 'in_progress';
+        await onPlanUpdate?.(plan);
+
+        // 获取此步骤的工具
+        const stepTools = this.getToolsForStep(currentStep, tools);
+
+        // 生成并发送友好提示
+        const friendlyMessage = await this.generateFriendlyMessage(currentStep.description);
+        await onMessage?.({
+          type: 'normal_message',
+          messageId: `step_hint_${currentStep.id}`,
+          content: friendlyMessage,
+          timestamp: Date.now(),
+        });
+
+        // 为此步骤创建 ReActExecutor
+        const executor = new ReActExecutor({
+          model: this.config.executorModel,
+          provider: this.config.provider,
+          maxIterations: this.config.maxIterationsPerStep,
+          apiKey: this.config.apiKey,
+          baseUrl: this.config.baseUrl,
+          streaming: true,
+          ...this.config.executorConfig,
+        });
+
+        console.log('ReAct Executor Running...');
+        // 执行步骤
+        const stepResult = await executor.run({
+          input: currentStep.description,
+          context: this.formatPlanHistory(plan),
+          tools: stepTools,
+          onMessage,
+        });
+
+        // 更新步骤状态
+        currentStep.result = stepResult;
+        currentStep.status = 'done';
+
+        // 确定此步骤使用的主要工具及其返回类型
+        const mainTool = stepTools.length > 0 ? stepTools[0] : undefined;
+
+        plan.history.push({
+          stepId: currentStep.id,
+          result: stepResult,
+          toolName: mainTool?.name,
+          resultType: mainTool?.returnType || 'text',
+          timestamp: new Date(),
+        });
+        await onPlanUpdate?.(plan);
+      }
+
+      // 生成最终响应
+      const response = await this.generateFinalResponse(plan);
+
+      return { success: true, response, plan };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      await onMessage?.({
+        type: 'error',
+        message: `规划器失败: ${errorMessage}`,
+        timestamp: Date.now(),
+      });
+
+      return {
+        success: false,
+        response: `无法完成计划: ${errorMessage}`,
+        plan: { goal, steps: [], reasoning: '计划执行失败', history: [] },
+      };
+    }
+  }
+
+  /**
+   * 为给定目标生成初始计划
+   * 使用 tool call 方式实现结构化输出
+   */
+  private async generatePlan(goal: string, tools: Tool[]): Promise<Plan> {
+    const llm = createLLM({
+      model: this.config.plannerModel,
+      provider: this.config.provider,
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.baseUrl,
+    });
+
+    // 定义 generate_plan 工具，用于获取结构化的计划输出
+    const generatePlanTool = {
+      name: 'generate_plan',
+      description: '生成一个分步执行计划。你必须调用此工具来返回你的计划。',
+      schema: PlanSchema,
+    };
+
+    // 绑定工具并强制使用
+    const llmWithTool = llm.bindTools([generatePlanTool], {
+      tool_choice: { type: 'function', function: { name: 'generate_plan' } },
+    });
+
+    const toolDescriptions = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
+
+    const response = await llmWithTool.invoke([
+      new SystemMessage(this.config.systemPrompt),
+      new HumanMessage(this.config.planMessageTemplate(goal, toolDescriptions)),
+    ]);
+
+    // 从 tool_calls 中提取计划数据
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      throw new Error('LLM 未返回计划工具调用');
+    }
+
+    const toolCall = response.tool_calls[0];
+    if (toolCall.name !== 'generate_plan') {
+      throw new Error(`意外的工具调用: ${toolCall.name}`);
+    }
+
+    const planData = toolCall.args as z.infer<typeof PlanSchema>;
+
+    return {
+      goal: planData.goal,
+      steps: planData.steps.map(step => ({
+        id: step.id,
+        description: step.description,
+        status: 'pending' as const,
+        requiredTools: step.requiredTools,
+        dependencies: step.dependencies,
+      })),
+      reasoning: planData.reasoning,
+      history: [],
+    };
+  }
+
+  /**
+   * 根据执行结果优化计划
+   */
+  private async refinePlan(
+    plan: Plan,
+    latestResult: string,
+    tools: Tool[]
+  ): Promise<PlanRefinement> {
+    const llm = createLLM({
+      model: this.config.plannerModel,
+      provider: this.config.provider,
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.baseUrl,
+    });
+    const structuredLLM = llm.withStructuredOutput(PlanRefinementSchema);
+
+    const prompt = this.config.refineMessageTemplate(plan, latestResult, tools);
+
+    const response = await structuredLLM.invoke([
+      new SystemMessage(this.config.refinePrompt),
+      new HumanMessage(prompt),
+    ]);
+
+    return response as PlanRefinement;
+  }
+
+  /**
+   * 生成汇总计划执行的最终响应
+   */
+  private async generateFinalResponse(plan: Plan): Promise<string> {
+    const llm = createLLM({
+      model: this.config.plannerModel,
+      provider: this.config.provider,
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.baseUrl,
+    });
+
+    const response = await llm.invoke([
+      new SystemMessage(this.config.summaryPrompt),
+      new HumanMessage(this.config.summaryMessageTemplate(plan)),
+    ]);
+
+    return response.content as string;
+  }
+
+  /** 检查计划是否完成 */
+  private isPlanComplete(plan: Plan): boolean {
+    return plan.steps.every(step => step.status === 'done' || step.status === 'skipped');
+  }
+
+  /** 获取下一个待执行的步骤 */
+  private getNextStep(plan: Plan): PlanStep | undefined {
+    return plan.steps.find(step => {
+      if (step.status !== 'pending') return false;
+      if (step.dependencies?.length) {
+        return step.dependencies.every(depId => {
+          const depStep = plan.steps.find(s => s.id === depId);
+          return depStep?.status === 'done';
+        });
+      }
+      return true;
+    });
+  }
+
+  /** 获取特定步骤相关的工具 */
+  private getToolsForStep(step: PlanStep, allTools: Tool[]): Tool[] {
+    if (step.requiredTools?.length) {
+      return allTools.filter(t => step.requiredTools!.includes(t.name));
+    }
+    return allTools;
+  }
+
+  /** 生成友好的步骤提示消息 */
+  private async generateFriendlyMessage(stepDescription: string): Promise<string> {
+    const llm = createLLM({
+      model: this.config.plannerModel,
+      provider: this.config.provider,
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.baseUrl,
+    });
+
+    const response = await llm.invoke([
+      new SystemMessage(
+        '你是一个友好的助手。根据给定的任务描述，生成一条简短的中文提示消息（15字以内），告诉用户你正在做什么。语气要轻松友好，可以适当使用emoji。只返回提示消息本身，不要有其他内容。'
+      ),
+      new HumanMessage(`任务: ${stepDescription}`),
+    ]);
+
+    return (response.content as string).trim();
+  }
+
+  /** 格式化计划上下文，始终包含原始目标 */
+  private formatPlanHistory(plan: Plan): string {
+    // 始终包含原始目标，这是最重要的上下文
+    let context = `## 原始用户需求\n${plan.goal}\n`;
+
+    // 如果有之前步骤的结果，也加入上下文
+    if (plan.history.length > 0) {
+      context += `\n## 之前步骤的执行结果\n`;
+
+      for (const entry of plan.history) {
+        const step = plan.steps.find(s => s.id === entry.stepId);
+        const toolInfo = entry.toolName ? ` (工具: ${entry.toolName})` : '';
+        context += `### 步骤 ${entry.stepId}: ${step?.description || '未知'}${toolInfo}\n`;
+
+        // 根据返回类型动态格式化结果
+        switch (entry.resultType) {
+          case 'json':
+            context += `**结果数据 (JSON 格式，可直接作为参数使用):**\n`;
+            context += `\`\`\`json\n${entry.result}\n\`\`\`\n\n`;
+            break;
+          case 'code':
+            context += `**代码结果:**\n`;
+            context += `\`\`\`\n${entry.result}\n\`\`\`\n\n`;
+            break;
+          case 'markdown':
+            context += `**结果:**\n${entry.result}\n\n`;
+            break;
+          case 'text':
+          default:
+            context += `**结果:** ${entry.result}\n\n`;
+            break;
+        }
+      }
+    }
+
+    return context;
+  }
+}

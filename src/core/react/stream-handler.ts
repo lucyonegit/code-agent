@@ -48,7 +48,7 @@ export class StreamHandler {
       if (chunk.content) {
         const text = typeof chunk.content === 'string' ? chunk.content : '';
         if (text) {
-          // TRACE 级别：流式 chunk 输出（仅 streamChunk，不单独记录日志）
+          // TRACE 级别：流式 chunk 输出
           this.logger.streamChunk(text);
           accumulatedContent += text;
           await this.emitEvent({
@@ -58,8 +58,13 @@ export class StreamHandler {
             isComplete: false,
             timestamp: Date.now(),
           });
+
+          // 人工延时：模拟流式效果（因 LiteLLM 代理批量返回 chunks）
+          await this.delay(30);
         }
       }
+
+
 
       // 阶段 2: Action 累积
       if (chunk.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
@@ -137,4 +142,9 @@ export class StreamHandler {
       await this.onMessage(event);
     }
   }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 }
+

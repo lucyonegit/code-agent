@@ -5,7 +5,7 @@
 
 import { createBDDTool } from '../tools/bdd';
 import { createArchitectTool } from '../tools/architect';
-import { createFsCodeGenTool } from '../tools/codegen-fs';
+import { createFsCodeGenTool } from '../tools/codegen';
 import type {
   CodingAgentConfig,
   CodingAgentInput,
@@ -83,7 +83,6 @@ export async function runFixedWorkflow(
   const architectTool = createArchitectTool(llmConfig);
   const codegenTool = createFsCodeGenTool(
     { ...llmConfig, useRag },
-    {}, // 新项目模式，不需要 existingProjectId
     async event => {
       await emitEvent(onProgress, event as unknown as CodingAgentEvent);
     }

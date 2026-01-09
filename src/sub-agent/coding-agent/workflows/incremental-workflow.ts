@@ -1,9 +1,9 @@
 /**
  * 增量修改工作流
- * 通过 projectId 加载项目，跳过 BDD 和架构，直接生成代码
+ * 通过 projectId 加载项目，使用独立的增量代码生成工具
  */
 
-import { createFsCodeGenTool } from '../tools/codegen-fs';
+import { createIncrementalCodeGenTool } from '../tools/codegen';
 import { getProjectTree } from '../services/template-generator';
 import type {
   CodingAgentConfig,
@@ -79,32 +79,13 @@ function collectFilesFromTree(
 }
 
 /**
- * 构建最小增量架构（占位结构，让 LLM 自主通过 grep 决定修改哪些文件）
- */
-function buildMinimalArchitecture(requirement: string): ArchitectureFile[] {
-  // 只返回一个占位架构，实际修改由 LLM 通过 grep_files 自主决定
-  return [
-    {
-      path: 'src/App.tsx', // 占位，LLM 会自行决定真正需要修改的文件
-      type: 'component' as const,
-      description: `增量修改: ${requirement}`,
-      bdd_references: ['scenario_incremental'],
-      status: 'pending_generation' as const,
-      dependencies: [] as { path: string; import: string[] }[],
-      rag_context_used: null,
-      content: null,
-    },
-  ];
-}
-
-/**
  * 执行增量修改工作流
  */
 export async function runIncrementalWorkflow(
   context: IncrementalWorkflowContext,
   results: IncrementalWorkflowResult
 ): Promise<void> {
-  const { requirement, projectId, llmConfig, useRag, onProgress } = context;
+  const { requirement, projectId, llmConfig, onProgress } = context;
 
   await emitEvent(onProgress, {
     type: 'phase_start',
@@ -127,11 +108,11 @@ export async function runIncrementalWorkflow(
     throw new Error(`无法加载项目文件: ${projectId}`);
   }
 
-  // 创建代码生成工具
-  const codeGenTool = createFsCodeGenTool(
-    { ...llmConfig, useRag },
+  // 创建增量代码修改工具（简化的接口，只需 requirement）
+  const incrementalTool = createIncrementalCodeGenTool(
+    llmConfig,
     {
-      existingProjectId: projectId,
+      projectId,
       existingFiles: projectFiles,
     },
     async event => {
@@ -139,34 +120,11 @@ export async function runIncrementalWorkflow(
     }
   );
 
-  // 增量模式：构造符合 Schema 的占位 BDD 结构
-  const incrementalBDD: BDDFeature[] = [
-    {
-      feature_id: 'incremental_modification',
-      feature_title: '增量代码修改',
-      description: requirement,
-      scenarios: [
-        {
-          id: 'scenario_incremental',
-          title: '用户修改请求',
-          given: ['存在现有项目代码'],
-          when: ['用户请求修改'],
-          then: ['代码按需求更新'],
-        },
-      ],
-    },
-  ];
+  console.log(`[IncrementalWorkflow] Using incremental code gen tool`);
+  console.log(`[IncrementalWorkflow] Requirement: ${requirement}`);
 
-  // 构建最小架构（让 LLM 自主决定修改哪些文件）
-  const incrementalArchitecture = buildMinimalArchitecture(requirement);
-
-  console.log(`[IncrementalWorkflow] Incremental mode: LLM will autonomously determine files to modify`);
-
-  // 执行代码生成
-  const rawResult = await codeGenTool.execute({
-    bdd_scenarios: incrementalBDD,
-    architecture: incrementalArchitecture,
-  });
+  // 执行增量代码生成（只需传入 requirement）
+  const rawResult = await incrementalTool.execute({ requirement });
 
   // 解析结果
   try {

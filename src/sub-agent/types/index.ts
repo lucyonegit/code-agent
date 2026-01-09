@@ -108,8 +108,6 @@ export interface CodingAgentInput {
   requirement: string;
   /** 现有项目 ID（用于多轮修改，后端会自动加载项目文件） */
   projectId?: string;
-  /** 现有文件上下文（已废弃，使用 projectId 代替） */
-  files?: GeneratedFile[];
   /** 事件回调 */
   onProgress?: (event: CodingAgentEvent) => void | Promise<void>;
 }
@@ -193,35 +191,35 @@ export interface CodeGeneratedEvent {
  */
 export type CodingAgentEvent =
   | {
-      type: 'phase_start';
-      phase: 'bdd' | 'architect' | 'codegen';
-      message: string;
-      timestamp: number;
-    }
+    type: 'phase_start';
+    phase: 'bdd' | 'architect' | 'codegen';
+    message: string;
+    timestamp: number;
+  }
   | {
-      type: 'phase_complete';
-      phase: 'bdd' | 'architect' | 'codegen';
-      data: unknown;
-      timestamp: number;
-    }
+    type: 'phase_complete';
+    phase: 'bdd' | 'architect' | 'codegen';
+    data: unknown;
+    timestamp: number;
+  }
   | { type: 'thought'; thoughtId: string; chunk: string; isComplete: boolean; timestamp: number }
   | { type: 'normal_message'; messageId: string; content: string; timestamp: number }
   | {
-      type: 'tool_call';
-      toolCallId: string;
-      toolName: string;
-      args: Record<string, unknown>;
-      timestamp: number;
-    }
+    type: 'tool_call';
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    timestamp: number;
+  }
   | {
-      type: 'tool_call_result';
-      toolCallId: string;
-      toolName: string;
-      result: string;
-      success: boolean;
-      duration: number;
-      timestamp: number;
-    }
+    type: 'tool_call_result';
+    toolCallId: string;
+    toolName: string;
+    result: string;
+    success: boolean;
+    duration: number;
+    timestamp: number;
+  }
   | { type: 'plan_update'; plan: Plan; timestamp: number }
   | { type: 'error'; message: string; timestamp: number }
   | { type: 'complete'; timestamp: number }

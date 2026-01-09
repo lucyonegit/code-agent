@@ -40,7 +40,7 @@ export class CodingAgent {
    * 运行编码流水线
    */
   async run(input: CodingAgentInput): Promise<CodingAgentResult> {
-    const { requirement, projectId, files, onProgress } = input;
+    const { requirement, projectId, onProgress } = input;
 
     // 创建 LLM 配置
     const llmConfig = {
@@ -78,31 +78,6 @@ export class CodingAgent {
           },
           results
         );
-      } else if (files && files.length > 0) {
-        // 向后兼容：如果有 files 但没有 projectId，提取 projectId
-        const legacyProjectId = (files[0] as { projectId?: string }).projectId;
-        if (legacyProjectId) {
-          await runIncrementalWorkflow(
-            {
-              requirement,
-              projectId: legacyProjectId,
-              llmConfig,
-              useRag: this.config.useRag,
-              onProgress,
-            },
-            results
-          );
-        } else {
-          await runFixedWorkflow(
-            {
-              requirement,
-              llmConfig,
-              useRag: this.config.useRag,
-              onProgress,
-            },
-            results
-          );
-        }
       } else {
         // 正常全流程 - 使用固定工作流
         await runFixedWorkflow(

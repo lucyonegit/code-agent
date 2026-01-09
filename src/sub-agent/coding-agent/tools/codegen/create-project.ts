@@ -36,6 +36,10 @@ import {
   parseNpmDependencies,
   collectGeneratedFiles,
 } from './index';
+import {
+  conversationStorage,
+  ConversationCollector,
+} from '../../services/conversation-manager';
 
 /**
  * 代码生成进度回调函数类型
@@ -144,6 +148,13 @@ export function createFsCodeGenTool(
         logLevel: LogLevel.DEBUG,
       });
 
+      // 对话收集器
+      const collector = new ConversationCollector();
+
+      // 添加初始需求描述
+      const bddSummary = bddData.map(f => f.feature_title).join(', ');
+      collector.addUserMessage(`创建新项目: ${bddSummary}`);
+
       // 执行 ReAct 循环
       let finalSummary = '';
       const result = await executor.run({
@@ -151,8 +162,9 @@ export function createFsCodeGenTool(
         tools: fsTools,
         onMessage: async (event: ReActEvent) => {
           if (onProgress) {
-            // 转发事件
             if (event.type === 'thought') {
+              // 收集思考
+              collector.handleThought(event.thoughtId, event.chunk, event.isComplete);
               await onProgress({
                 type: 'thought',
                 thoughtId: event.thoughtId,
@@ -161,6 +173,12 @@ export function createFsCodeGenTool(
                 timestamp: event.timestamp,
               } as unknown as CodingAgentEvent);
             } else if (event.type === 'tool_call') {
+              // 收集工具调用（包含 args）
+              collector.handleToolCall(
+                event.toolCallId,
+                event.toolName,
+                event.args as Record<string, unknown>
+              );
               await onProgress({
                 type: 'tool_call',
                 toolCallId: event.toolCallId,
@@ -169,6 +187,14 @@ export function createFsCodeGenTool(
                 timestamp: event.timestamp,
               });
             } else if (event.type === 'tool_call_result') {
+              // 收集工具结果
+              collector.handleToolCallResult(
+                event.toolCallId,
+                event.toolName,
+                String(event.result),
+                event.success,
+                event.duration
+              );
               await onProgress({
                 type: 'tool_call_result',
                 toolCallId: event.toolCallId,
@@ -201,6 +227,19 @@ export function createFsCodeGenTool(
       // 收集生成的文件列表
       const generatedFiles = collectGeneratedFiles(tree as Record<string, unknown>);
       console.log(`[CreateProject] Collected ${generatedFiles.length} files`);
+
+      // 添加最终结果消息
+      if (summary) {
+        collector.addFinalResult(summary);
+      }
+
+      // 保存对话记录
+      try {
+        await conversationStorage.appendMessages(projectId, collector.getMessages());
+        console.log(`[CreateProject] Saved ${collector.getMessages().length} messages to conversation`);
+      } catch (e) {
+        console.error(`[CreateProject] Failed to save conversation:`, e);
+      }
 
       return JSON.stringify({
         tree,

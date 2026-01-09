@@ -10,6 +10,7 @@ import {
   persistProject,
   deleteProject,
 } from '../../sub-agent/coding-agent/services/template-generator';
+import { conversationStorage } from '../../sub-agent/coding-agent/services/conversation-manager';
 
 @Injectable()
 export class ProjectsService {
@@ -21,7 +22,7 @@ export class ProjectsService {
   }
 
   /**
-   * 获取项目详情
+   * 获取项目详情（包含对话记录）
    */
   async getById(projectId: string) {
     const info = await getProjectInfo(projectId);
@@ -30,12 +31,17 @@ export class ProjectsService {
     }
 
     const tree = await getProjectTree(projectId);
+
+    // 加载对话记录
+    const conversation = await conversationStorage.load(projectId);
+
     return {
       id: info.id,
       name: info.name,
       createdAt: info.createdAt,
       updatedAt: info.updatedAt,
       tree,
+      conversation: conversation?.messages || [],
     };
   }
 

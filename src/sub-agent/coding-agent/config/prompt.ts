@@ -50,6 +50,34 @@ export const FILE_SIZE_RULES = `## 📏 文件大小规范（必须严格遵守�
 - ❌ 重复代码未抽离复用`;
 
 /**
+ * 设计风格预置系统
+ */
+export const DESIGN_STYLE_PRESETS = `## 🎨 设计风格预置（业内流行风格）
+
+### 四种基础风格
+
+| 风格 | 核心特征 | 关键技术 | 适用场景 |
+|------|---------|---------|---------|
+| **Glassmorphism** | 毛玻璃透明层次感 | \`backdrop-filter: blur(10-20px)\` + \`rgba(255,255,255,0.1-0.25)\` + 1px 细边框 | 创意工具、Landing Page、音乐应用 |
+| **Gradient Design** | 丰富渐变色彩 | \`linear-gradient\` 头部 + 白色卡片 + 大圆角(16-24px) + 彩色图标 | 表单工具、计算器、仪表板 |
+| **Soft Modern** | 柔和极简 | 低饱和度配色(浅灰/米白) + 大量留白 + 轻微阴影 + 圆角8-12px | 内容平台、博客、笔记应用 |
+| **Color-Coded** | 色彩区分信息 | 语义化配色 + 彩色标签/Badge + 状态色(绿成功/红错误/黄警告) | 后台管理、任务看板、数据分析 |
+
+### 常见风格组合
+
+| 组合 | 效果 | 典型应用 |
+|------|------|---------|
+| **Glassmorphism + Gradient** | 极光渐变背景 + 毛玻璃卡片 | 音乐播放器、创意工具 |
+| **Gradient + Color-Coded** | 渐变头部 + 多彩分类指示 | 工资计算器、数据仪表板 |
+| **Soft Modern + Color-Coded** | 柔和界面 + 彩色标签区分 | 任务管理、笔记应用 |
+
+### 风格选择指南
+1. **工具/计算器类** → Gradient Design（或 + Color-Coded）
+2. **创意/展示类** → Glassmorphism（或 + Gradient）
+3. **内容/阅读类** → Soft Modern
+4. **管理/数据类** → Color-Coded（或 + Soft Modern）`;
+
+/**
  * UI 设计规范模板
  */
 export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
@@ -57,33 +85,26 @@ export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
 ### 设计哲学
 **目标：创造令人惊艳、专业且符合应用场景的用户界面**
 
-⚠️ **禁止千篇一律！** 根据应用类型选择合适的设计语言：
+⚠️ **禁止千篇一律！** 根据应用类型选择合适的设计风格（支持组合使用）。
 
-| 应用类型 | 推荐设计风格 | 配色方向 |
-|---------|------------|---------|
-| 技术论坛/社区 | 现代简洁 | 白/浅灰背景 + 品牌色强调（如掘金绿、知乎蓝） |
-| 数据仪表盘 | 科技风 | 深色主题 + 霓虹/渐变强调色 |
-| 内容平台/博客 | 优雅清新 | 白色背景 + 柔和色彩 + 大量留白 |
-| 电商/商业 | 专业稳重 | 白背景 + 品牌橙/红/蓝 |
-| 创意工具 | 玻璃态/新拟态 | 渐变背景 + 毛玻璃效果 |
-| 娱乐/游戏 | 活力动感 | 鲜艳渐变 + 大胆动画 |
+${DESIGN_STYLE_PRESETS}
 
 ### CSS 设计系统（必须创建 src/styles/variables.css）
 
-**根据应用场景自由设计配色，但必须使用 CSS 变量：**
+**根据选择的风格定义配色，必须使用 CSS 变量：**
 
 \`\`\`css
 :root {
-  /* 🎨 颜色系统（根据应用类型选择适合的方案！） */
+  /* 🎨 根据风格选择配色方案 */
   
-  /* 示例1：技术社区风格（类似掘金） */
-  /* --color-bg: #f4f5f5; --color-surface: #ffffff; --color-primary: #1e80ff; */
+  /* Glassmorphism 示例：极光渐变背景 */
+  /* --color-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%); */
   
-  /* 示例2：内容平台风格（优雅清新） */
-  /* --color-bg: #fafafa; --color-surface: #ffffff; --color-primary: #7c3aed; */
+  /* Gradient Design 示例：紫粉渐变头部 */
+  /* --color-gradient: linear-gradient(90deg, #7c3aed 0%, #ec4899 100%); */
   
-  /* 示例3：科技风格（深色主题） */
-  /* --color-bg: #0f172a; --color-surface: #1e293b; --color-primary: #38bdf8; */
+  /* Soft Modern 示例：柔和米白 */
+  /* --color-bg: #fafaf9; --color-surface: #ffffff; --color-primary: #6366f1; */
   
   --color-bg: /* 主背景色 */;
   --color-surface: /* 卡片背景 */;
@@ -108,11 +129,12 @@ export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
   --space-xl: 2rem;
   --space-2xl: 3rem;
   
-  /* 圆角 */
+  /* 圆角（根据风格调整） */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-xl: 1rem;      /* Soft Modern */
+  --radius-2xl: 1.5rem;   /* Gradient Design */
   
   /* 阴影 */
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
@@ -129,7 +151,7 @@ export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
 
 1. **配色一致性**
    - ✅ 所有颜色通过 CSS 变量引用
-   - ✅ 配色符合应用场景和用户预期
+   - ✅ 配色符合选择的设计风格
    - ❌ 禁止硬编码颜色值（如 color: #1e293b）
 
 2. **交互反馈**（所有可点击元素必须有）
@@ -144,10 +166,10 @@ export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
    }
    \`\`\`
 
-3. **现代视觉技术**（根据风格选择）
-   - 玻璃态：\`backdrop-filter: blur(10px)\` + 半透明背景
-   - 渐变：\`linear-gradient()\` 增强视觉层次
-   - 微动画：按钮、卡片的 hover 状态反馈
+3. **风格特效**（根据选择的风格）
+   - Glassmorphism：\`backdrop-filter: blur(10px)\` + 半透明背景
+   - Gradient：\`linear-gradient()\` 头部/背景
+   - Color-Coded：语义化彩色标签和状态指示
 
 4. **字体与排版**
    - 使用系统字体栈：\`-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif\`

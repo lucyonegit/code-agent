@@ -78,9 +78,9 @@ export const DESIGN_STYLE_PRESETS = `## 🎨 设计风格预置（业内流行�
 4. **管理/数据类** → Color-Coded（或 + Soft Modern）`;
 
 /**
- * UI 设计规范模板
+ * UI 设计规范模板（精简版）
  */
-export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
+export const UI_DESIGN_RULES = `## 🎨 UI 设计规范
 
 ### 设计哲学
 **目标：创造令人惊艳、专业且符合应用场景的用户界面**
@@ -89,96 +89,28 @@ export const UI_DESIGN_RULES = `## 🎨 UI 设计规范（极其重要！）
 
 ${DESIGN_STYLE_PRESETS}
 
-### CSS 设计系统（必须创建 src/styles/variables.css）
+### CSS 设计系统要求
 
-**根据选择的风格定义配色，必须使用 CSS 变量：**
+1. **必须创建 \`src/styles/variables.css\`**，定义以下 CSS 变量：
+   - 颜色：\`--color-bg\`, \`--color-surface\`, \`--color-primary\`, \`--color-text\` 等
+   - 间距：\`--space-xs\` 到 \`--space-2xl\`（0.25rem 到 3rem）
+   - 圆角：\`--radius-sm\` 到 \`--radius-2xl\`
+   - 阴影：\`--shadow-sm\`, \`--shadow-md\`, \`--shadow-lg\`
+   - 过渡：\`--transition-fast\`(150ms), \`--transition-normal\`(250ms)
 
-\`\`\`css
-:root {
-  /* 🎨 根据风格选择配色方案 */
-  
-  /* Glassmorphism 示例：极光渐变背景 */
-  /* --color-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%); */
-  
-  /* Gradient Design 示例：紫粉渐变头部 */
-  /* --color-gradient: linear-gradient(90deg, #7c3aed 0%, #ec4899 100%); */
-  
-  /* Soft Modern 示例：柔和米白 */
-  /* --color-bg: #fafaf9; --color-surface: #ffffff; --color-primary: #6366f1; */
-  
-  --color-bg: /* 主背景色 */;
-  --color-surface: /* 卡片背景 */;
-  --color-surface-hover: /* hover 状态 */;
-  --color-primary: /* 主品牌色 */;
-  --color-primary-hover: /* 主色 hover */;
-  --color-secondary: /* 辅助色 */;
-  --color-accent: /* 强调色 */;
-  --color-text: /* 主文本 */;
-  --color-text-secondary: /* 次要文本 */;
-  --color-text-muted: /* 弱化文本 */;
-  --color-border: /* 边框 */;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  
-  /* 间距系统 */
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-  --space-2xl: 3rem;
-  
-  /* 圆角（根据风格调整） */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;      /* Soft Modern */
-  --radius-2xl: 1.5rem;   /* Gradient Design */
-  
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
-  --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
-  
-  /* 过渡 */
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-}
-\`\`\`
+2. **配色方案根据风格选择**：
+   - Glassmorphism → 渐变背景 + 半透明色
+   - Gradient Design → 紫粉/蓝紫渐变
+   - Soft Modern → 低饱和度米白/浅灰
+   - Color-Coded → 语义化状态色
 
 ### 设计原则（必须遵守）
 
-1. **配色一致性**
-   - ✅ 所有颜色通过 CSS 变量引用
-   - ✅ 配色符合选择的设计风格
-   - ❌ 禁止硬编码颜色值（如 color: #1e293b）
-
-2. **交互反馈**（所有可点击元素必须有）
-   \`\`\`css
-   .interactive-element {
-     transition: all var(--transition-normal);
-     cursor: pointer;
-   }
-   .interactive-element:hover {
-     transform: translateY(-2px);
-     box-shadow: var(--shadow-md);
-   }
-   \`\`\`
-
-3. **风格特效**（根据选择的风格）
-   - Glassmorphism：\`backdrop-filter: blur(10px)\` + 半透明背景
-   - Gradient：\`linear-gradient()\` 头部/背景
-   - Color-Coded：语义化彩色标签和状态指示
-
-4. **字体与排版**
-   - 使用系统字体栈：\`-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif\`
-   - 正文 16px 起，行高 1.5-1.8
-   - 使用 font-weight 区分标题/正文
-
-5. **响应式布局**
-   - 使用 Flexbox/Grid
-   - 使用相对单位（rem, %, vw/vh）`;
+1. **配色一致性**：所有颜色通过 CSS 变量引用，禁止硬编码颜色值
+2. **交互反馈**：可点击元素必须有 hover/active 状态（transform + shadow 变化）
+3. **风格特效**：Glassmorphism 用 \`backdrop-filter: blur()\`，Gradient 用 \`linear-gradient()\`
+4. **字体排版**：系统字体栈，正文 16px 起，行高 1.5-1.8
+5. **响应式布局**：Flexbox/Grid + 相对单位（rem, %, vw/vh）`;
 
 /**
  * 代码质量规范模板

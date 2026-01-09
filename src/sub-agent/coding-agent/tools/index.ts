@@ -28,6 +28,7 @@ export {
   createReadFileTool,
   createWriteFileTool,
   createDeleteFileTool,
+  createModifyFileTool,
   createGrepFilesTool,
   createReadFileLinesTool,
   createListSymbolsTool,

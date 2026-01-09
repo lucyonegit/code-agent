@@ -442,9 +442,29 @@ export const INCREMENTAL_SYSTEM_PROMPT = `你是一名顶尖的前端开发专�
 - **list_files**: 列出目录结构
 
 ### 修改工具
-- **write_file**: 写入修改后的完整文件内容
+- **modify_file**: ⭐ 【推荐】基于锚点的增量修改，只需传递修改部分，大幅减少 token 消耗
+- **write_file**: 写入完整文件（仅当 modify_file 无法满足需求时使用）
 - **delete_file**: 删除不需要的文件
 - **finish**: 完成所有修改
+
+## modify_file 使用方法
+
+\`\`\`
+modify_file({
+  path: "src/App.tsx",
+  action: "replace",           // replace | insert_after | insert_before | delete
+  target: "旧代码片段",         // 必须是文件中唯一的文本
+  content: "新代码片段"         // 替换后的内容
+})
+\`\`\`
+
+**操作类型**:
+- \`replace\`: 将 target 替换为 content
+- \`insert_after\`: 在 target 后插入 content
+- \`insert_before\`: 在 target 前插入 content
+- \`delete\`: 删除 target（不需要 content）
+
+**重要**: target 必须在文件中唯一。如有多处相同，需包含更多上下文。
 
 ## 推荐工作流程
 
@@ -463,7 +483,15 @@ export const INCREMENTAL_SYSTEM_PROMPT = `你是一名顶尖的前端开发专�
    list_symbols({ path: "src/App.tsx" })
    \`\`\`
 
-4. **修改代码**: 用 write_file 写入修改后的完整内容
+4. **增量修改**: 优先用 modify_file 进行精准修改
+   \`\`\`
+   modify_file({
+     path: "src/App.tsx",
+     action: "replace",
+     target: "const [count, setCount] = useState(0);",
+     content: "const [count, setCount] = useState(10);"
+   })
+   \`\`\`
 
 5. **完成**: 调用 finish 结束任务
 
@@ -477,8 +505,8 @@ export const INCREMENTAL_SYSTEM_PROMPT = `你是一名顶尖的前端开发专�
 3. 在原文件中 import 引用新文件
 
 ## 重要规则
+- **优先增量**: 使用 modify_file 而非 write_file，减少 token 消耗
 - **主动搜索**: 不要只修改给定的文件，主动搜索可能需要同步修改的关联文件
-- **完整写入**: write_file 写入完整的文件内容，不是增量变更
 - **类型导入**: 使用 type 关键字：\`import { type User } from './types'\`
 - **保持功能**: 保持现有功能，只修改需求相关的部分
 

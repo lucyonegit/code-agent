@@ -307,3 +307,127 @@ export function createDeleteFileTool(projectDir: string): Tool {
     },
   };
 }
+
+/**
+ * 修改操作类型
+ */
+type ModifyAction = 'replace' | 'insert_after' | 'insert_before' | 'delete';
+
+/**
+ * 创建 modify_file 工具
+ * 基于锚点的增量文件修改，减少 token 消耗
+ */
+export function createModifyFileTool(projectDir: string): Tool {
+  return {
+    name: 'modify_file',
+    description: `基于锚点的增量文件修改。相比 write_file 只需传递修改部分，大幅减少 token 消耗。
+
+支持的操作：
+- replace: 将 target 文本替换为 content
+- insert_after: 在 target 文本后插入 content
+- insert_before: 在 target 文本前插入 content  
+- delete: 删除 target 文本
+
+⚠️ target 必须是文件中**唯一**的文本片段，包含足够的上下文确保唯一性。`,
+    parameters: z.object({
+      path: z.string().describe('文件路径，相对于项目根目录'),
+      action: z.enum(['replace', 'insert_after', 'insert_before', 'delete']).describe('操作类型'),
+      target: z.string().describe('锚点文本，必须在文件中唯一存在。可包含多行用于确保唯一性'),
+      content: z.string().optional().describe('新内容。replace/insert 操作时必填，delete 时不需要'),
+    }),
+    returnType: 'json',
+    execute: async args => {
+      const { path: filePath, action, target, content } = args;
+      const fullPath = join(projectDir, filePath);
+
+      console.log(`[fs:modify_file] ${action} in ${filePath}`);
+      console.log(`[fs:modify_file] target: "${target.slice(0, 100)}..."`);
+
+      // 验证文件存在
+      if (!existsSync(fullPath)) {
+        return JSON.stringify({
+          success: false,
+          error: `文件不存在: ${filePath}`,
+        });
+      }
+
+      // 验证 content 参数（非 delete 操作必须提供）
+      if (action !== 'delete' && (content === undefined || content === null)) {
+        return JSON.stringify({
+          success: false,
+          error: `${action} 操作需要 content 参数`,
+        });
+      }
+
+      try {
+        // 读取文件内容
+        let fileContent = readFileSync(fullPath, 'utf-8');
+
+        // 检查 target 是否存在
+        const targetIndex = fileContent.indexOf(target);
+        if (targetIndex === -1) {
+          return JSON.stringify({
+            success: false,
+            error: `未找到匹配的 target 文本。请确保 target 与文件内容完全一致（包括空格和换行）`,
+            hint: `文件前 200 字符: "${fileContent.slice(0, 200)}"`,
+          });
+        }
+
+        // 检查 target 是否唯一
+        const secondIndex = fileContent.indexOf(target, targetIndex + 1);
+        if (secondIndex !== -1) {
+          return JSON.stringify({
+            success: false,
+            error: `target 在文件中出现多次（至少 2 次）。请包含更多上下文使其唯一`,
+            hint: `第一次出现在位置 ${targetIndex}，第二次在位置 ${secondIndex}`,
+          });
+        }
+
+        // 执行修改操作
+        let newContent: string;
+        const actionType = action as ModifyAction;
+
+        switch (actionType) {
+          case 'replace':
+            newContent = fileContent.replace(target, content!);
+            break;
+          case 'insert_after':
+            newContent = fileContent.replace(target, target + content!);
+            break;
+          case 'insert_before':
+            newContent = fileContent.replace(target, content! + target);
+            break;
+          case 'delete':
+            newContent = fileContent.replace(target, '');
+            break;
+          default:
+            return JSON.stringify({
+              success: false,
+              error: `未知操作: ${action}`,
+            });
+        }
+
+        // 写入文件
+        writeFileSync(fullPath, newContent, 'utf-8');
+
+        const sizeDiff = newContent.length - fileContent.length;
+        console.log(`[fs:modify_file] 修改成功: ${filePath} (${sizeDiff >= 0 ? '+' : ''}${sizeDiff} chars)`);
+
+        return JSON.stringify({
+          success: true,
+          path: filePath,
+          action,
+          targetFound: true,
+          sizeBefore: fileContent.length,
+          sizeAfter: newContent.length,
+          sizeDiff,
+        });
+      } catch (error) {
+        return JSON.stringify({
+          success: false,
+          error: `修改文件失败: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    },
+  };
+}

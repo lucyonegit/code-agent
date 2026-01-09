@@ -17,6 +17,7 @@ export {
   createReadFileTool,
   createWriteFileTool,
   createDeleteFileTool,
+  createModifyFileTool,
   type FileInfo,
 } from './base-tools';
 

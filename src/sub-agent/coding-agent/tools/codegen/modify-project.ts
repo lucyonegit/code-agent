@@ -13,6 +13,7 @@ import {
   createWriteFileTool,
   createReadFileTool,
   createDeleteFileTool,
+  createModifyFileTool,
   createListFilesTool,
   createGrepFilesTool,
   createReadFileLinesTool,
@@ -95,7 +96,8 @@ export function createIncrementalCodeGenTool(
         createListSymbolsTool(tempDir),
         createReadFileTool(tempDir),
         // 修改工具
-        createWriteFileTool(tempDir),
+        createModifyFileTool(tempDir),  // 优先使用增量修改，减少 token
+        createWriteFileTool(tempDir),   // 大范围修改时使用
         createDeleteFileTool(tempDir),
       ];
 

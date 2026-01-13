@@ -10,6 +10,15 @@
 import { createLLM } from '../../core/BaseLLM';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { runFixedWorkflow, runIncrementalWorkflow } from './workflows';
+import { ReActExecutor } from '../../core/react/executor';
+import { classifyIntent, type IntentType } from './services/intent-classifier';
+import {
+  createGrepFilesTool,
+  createReadFileLinesTool,
+  createListSymbolsTool,
+  countProjectFiles,
+} from './tools/fs';
+import { join } from 'path';
 import type {
   CodingAgentConfig,
   CodingAgentInput,
@@ -19,6 +28,7 @@ import type {
   ArchitectureFile,
   CodeGenResult,
 } from '../types/index';
+import type { LLMProvider } from '../../types/index';
 
 /**
  * CodingAgent - 基于固定工作流的编码智能体
@@ -48,6 +58,17 @@ export class CodingAgent {
       provider: this.config.provider,
       baseUrl: this.config.baseUrl,
     };
+
+    // === 步骤1: 意图分类 ===
+    console.log('[CodingAgent] 开始意图分类...');
+    const intentResult = await classifyIntent(requirement, llmConfig);
+    console.log('[CodingAgent] 意图分类结果:', intentResult);
+
+    // === 步骤2: 根据意图选择执行路径 ===
+    if (intentResult.intent === 'simple_query') {
+      console.log('[CodingAgent] 检测到简单查询，使用 ReActExecutor 快速响应');
+      return await this.handleSimpleQuery(requirement, projectId, llmConfig, onProgress);
+    }
 
     // 存储中间结果
     const results = {
@@ -91,6 +112,19 @@ export class CodingAgent {
         );
       }
 
+      // 发送 coding_done 事件（代码生成完成）
+      await this.emitEvent(onProgress, {
+        type: 'coding_done',
+        success: true,
+        bddFeatures: results.bddFeatures,
+        architecture: results.architecture,
+        generatedFiles: results.codeResult?.files || [],
+        tree: results.codeResult?.tree,
+        summary: results.codeResult?.summary || '',
+        projectId: results.codeResult?.projectId,
+        timestamp: Date.now(),
+      });
+
       // 发送 complete 事件通知业务层
       await this.emitEvent(onProgress, {
         type: 'complete',
@@ -116,6 +150,124 @@ export class CodingAgent {
       });
       return { success: false, error: errorMessage };
     }
+  }
+
+  /**
+   * 处理简单查询 - 使用 ReActExecutor + fs 工具
+   */
+  private async handleSimpleQuery(
+    requirement: string,
+    projectId: string | undefined,
+    llmConfig: { model: string; provider: LLMProvider; baseUrl?: string },
+    onProgress?: (event: CodingAgentEvent) => void | Promise<void>
+  ): Promise<CodingAgentResult> {
+    const searchDir = projectId ? join(process.cwd(), 'projects', projectId) : process.cwd();
+    console.log('[CodingAgent] 简单查询模式，搜索目录:', searchDir);
+
+    // 创建 fs 工具
+    const tools = [
+      createGrepFilesTool(searchDir),
+      createReadFileLinesTool(searchDir),
+      createListSymbolsTool(searchDir),
+    ];
+
+    // 统计项目文件数量，动态调整迭代次数
+    const fileCount = countProjectFiles(searchDir);
+    const maxIterations = fileCount + 15
+
+    console.log(`[CodingAgent] 项目统计: ${fileCount} 个文件，迭代次数设置为 ${maxIterations}`);
+
+    // 创建 ReActExecutor
+    const reactExecutor = new ReActExecutor({
+      model: "gemini-2.5-flash",
+      provider: "gemini",
+      baseUrl: llmConfig.baseUrl,
+      streaming: true,
+      maxIterations,
+      systemPrompt: `你是一个代码助手。用户会询问关于代码的问题，你需要使用工具来查找和分析代码，然后给出清晰的答案。
+
+项目信息：
+- 搜索路径: ${searchDir}
+- 文件数量: ${fileCount} 个文件
+- 最大迭代次数: ${maxIterations}
+
+可用工具：
+- grep_files: 在项目中搜索代码
+- read_file_lines: 读取文件的指定行
+- list_symbols: 列出文件中的符号（函数、类、常量等）
+
+回答时请：
+1. 使用工具找到相关信息
+2. 给出准确的文件路径和行号
+3. 用简洁清晰的中文回答`,
+    });
+
+    // 执行 ReAct 循环
+    const answer = await reactExecutor.run({
+      input: requirement,
+      tools,
+      onMessage: async event => {
+        // 直接透传 ReAct 事件到 CodingAgent
+        if (onProgress) {
+          if (event.type === 'thought') {
+            // 直接透传 thought 事件，前端会通过 thoughtId 合并流式输出
+            await onProgress({
+              type: 'thought',
+              thoughtId: event.thoughtId,
+              chunk: event.chunk,
+              isComplete: event.isComplete,
+              timestamp: event.timestamp,
+            });
+          } else if (event.type === 'tool_call') {
+            // 转发工具调用事件，前端显示工具调用卡片
+            await onProgress({
+              type: 'tool_call',
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              args: event.args,
+              timestamp: event.timestamp,
+            });
+          } else if (event.type === 'tool_call_result') {
+            // 转发工具结果事件
+            await onProgress({
+              type: 'tool_call_result',
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              result: event.result,
+              success: event.success,
+              duration: event.duration,
+              timestamp: event.timestamp,
+            });
+          } else if (event.type === 'final_result') {
+            // 最终结果也作为 normal_message 发送
+            await onProgress({
+              type: 'normal_message',
+              messageId: `query_result_${Date.now()}`,
+              content: event.content,
+              timestamp: event.timestamp,
+            });
+          }
+        }
+      },
+    });
+
+    // 发送完成事件
+    if (onProgress) {
+      await onProgress({
+        type: 'complete',
+        timestamp: Date.now(),
+      });
+    }
+
+    // 返回结果
+    return {
+      success: true,
+      isQuery: true,  // 标识这是简单查询，不是代码生成
+      bddFeatures: [],
+      architecture: [],
+      generatedFiles: [],
+      summary: answer,
+    };
   }
 
   /**
@@ -149,8 +301,8 @@ export class CodingAgent {
     );
 
     const llm = createLLM({
-      model: this.config.model,
-      provider: this.config.provider,
+      model: 'gemini-2.5-flash',
+      provider: 'gemini',
       baseUrl: this.config.baseUrl,
     });
 

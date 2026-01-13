@@ -27,3 +27,6 @@ export {
   createReadFileLinesTool,
   createListSymbolsTool,
 } from './search-tools';
+
+// 工具函数
+export { countProjectFiles } from './utils';

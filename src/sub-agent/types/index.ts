@@ -220,6 +220,18 @@ export type CodingAgentEvent =
     duration: number;
     timestamp: number;
   }
+  | {
+    type: 'coding_done';
+    success: boolean;
+    bddFeatures?: BDDFeature[];
+    architecture?: ArchitectureFile[];
+    generatedFiles?: GeneratedFile[];
+    tree?: unknown;
+    summary?: string;
+    projectId?: string;
+    error?: string;
+    timestamp: number;
+  }
   | { type: 'plan_update'; plan: Plan; timestamp: number }
   | { type: 'error'; message: string; timestamp: number }
   | { type: 'complete'; timestamp: number }
@@ -235,6 +247,8 @@ export type CodingAgentEvent =
  */
 export interface CodingAgentResult {
   success: boolean;
+  /** 是否为简单查询（非代码生成） */
+  isQuery?: boolean;
   bddFeatures?: BDDFeature[];
   architecture?: ArchitectureFile[];
   generatedFiles?: GeneratedFile[];

@@ -62,19 +62,8 @@ export class CodingController {
         }
       );
 
-      // 发送完成事件
+      // 发送完成事件（由 Agent 内部决定发送 coding_done 还是 query_complete）
       console.log(`[CodingController] Done: ${result.success}`);
-      sendSSE('coding_done', {
-        type: 'coding_done',
-        success: result.success,
-        bddFeatures: result.bddFeatures,
-        architecture: result.architecture,
-        generatedFiles: result.generatedFiles,
-        tree: result.tree,
-        summary: result.summary,
-        projectId: result.projectId,
-        error: result.error,
-      });
       res.end();
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';

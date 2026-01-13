@@ -153,15 +153,20 @@ const CURRENT_VERSION = 2; // 版本升级
 
 /**
  * 获取对话文件路径
+ * 
+ * 优先返回临时目录路径，确保增量修改模式下对话被保存到临时目录
+ * 这样 persistProject 时会随临时目录一起移动到持久化目录
  */
 function getConversationPath(projectId: string): string {
-  const persistedDir = getProjectPath(projectId);
-  if (existsSync(persistedDir)) {
-    return join(persistedDir, CONVERSATION_FILENAME);
+  // 优先检查临时目录是否存在（增量修改模式）
+  const tempDir = getTempProjectPath(projectId);
+  if (existsSync(tempDir)) {
+    return join(tempDir, CONVERSATION_FILENAME);
   }
 
-  const tempDir = getTempProjectPath(projectId);
-  return join(tempDir, CONVERSATION_FILENAME);
+  // 否则使用持久化目录
+  const persistedDir = getProjectPath(projectId);
+  return join(persistedDir, CONVERSATION_FILENAME);
 }
 
 /**

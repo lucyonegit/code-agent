@@ -4,70 +4,107 @@
  */
 
 import { z } from 'zod';
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { join, relative } from 'path';
+import { execSync } from 'child_process';
 import type { Tool } from '../../../../types/index';
 
 /**
- * 递归搜索文件内容
+ * 转义 Shell 参数，防止命令注入
+ * 使用单引号包裹，并转义内部的单引号
  */
-function searchInDirectory(
-  dirPath: string,
-  pattern: RegExp,
-  basePath: string,
+function escapeShellArg(arg: string): string {
+  // 将单引号替换为 '\''（结束引号、转义单引号、开始新引号）
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * 使用系统 grep 命令搜索文件内容
+ * 性能远优于 Node.js 递归实现
+ */
+function grepSearch(
+  searchDir: string,
+  pattern: string,
   includes: string[],
-  maxResults: number,
-  results: { path: string; line: number; content: string }[]
-): void {
-  if (results.length >= maxResults) return;
-  if (!existsSync(dirPath)) return;
+  maxResults: number
+): { path: string; line: number; content: string }[] {
+  const results: { path: string; line: number; content: string }[] = [];
 
-  const entries = readdirSync(dirPath);
+  try {
+    // 构建 grep 命令参数
+    const args: string[] = [
+      '-r', // 递归搜索
+      '-n', // 显示行号
+      '-E', // 使用扩展正则表达式
+      '-i', // 忽略大小写
+      '-I', // 忽略二进制文件
+      '--exclude-dir=node_modules', // 排除 node_modules
+      '--exclude-dir=.git', // 排除 .git
+      '--exclude-dir=.next', // 排除 .next
+      '--exclude-dir=dist', // 排除 dist
+      '--exclude-dir=build', // 排除 build
+    ];
 
-  for (const entry of entries) {
-    if (results.length >= maxResults) break;
-
-    // 跳过 node_modules 和隐藏文件
-    if (entry === 'node_modules' || entry.startsWith('.')) {
-      continue;
-    }
-
-    const fullPath = join(dirPath, entry);
-    const relativePath = basePath ? `${basePath}/${entry}` : entry;
-
-    try {
-      const stat = statSync(fullPath);
-
-      if (stat.isDirectory()) {
-        searchInDirectory(fullPath, pattern, relativePath, includes, maxResults, results);
-      } else {
-        // 检查文件类型过滤
-        if (includes.length > 0) {
-          const matchesInclude = includes.some(inc => {
-            const glob = inc.replace(/\*/g, '.*');
-            return new RegExp(`^${glob}$`).test(entry);
-          });
-          if (!matchesInclude) continue;
-        }
-
-        // 读取文件并搜索
-        const content = readFileSync(fullPath, 'utf-8');
-        const lines = content.split('\n');
-
-        for (let i = 0; i < lines.length && results.length < maxResults; i++) {
-          if (pattern.test(lines[i])) {
-            results.push({
-              path: relativePath,
-              line: i + 1,
-              content: lines[i].trim().slice(0, 200), // 截断过长的行
-            });
-          }
-        }
+    // 添加文件类型过滤（使用 Shell 转义防注入）
+    if (includes.length > 0) {
+      for (const inc of includes) {
+        args.push(`--include=${escapeShellArg(inc)}`);
       }
-    } catch {
-      // 忽略读取错误
     }
+
+    // 构建完整命令（使用 Shell 转义保护 pattern）
+    const cmd = `grep ${args.join(' ')} -e ${escapeShellArg(pattern)} . 2>/dev/null | head -n ${maxResults}`;
+
+    // 执行 grep 命令
+    const output = execSync(cmd, {
+      cwd: searchDir,
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    });
+
+    // 解析 grep 输出
+    // 格式: ./path/to/file:lineNumber:matchedContent
+    // 从右往左解析，正确处理文件名中包含冒号的情况
+    const lines = output.trim().split('\n').filter(Boolean);
+
+    for (const line of lines) {
+      // 移除开头的 ./
+      const withoutPrefix = line.startsWith('./') ? line.slice(2) : line;
+
+      // 从右往左查找，找到最后一个冒号（分隔行号和内容）
+      const lastColonIndex = withoutPrefix.lastIndexOf(':');
+      if (lastColonIndex === -1) continue;
+
+      const beforeLastColon = withoutPrefix.slice(0, lastColonIndex);
+      const content = withoutPrefix.slice(lastColonIndex + 1);
+
+      // 再找倒数第二个冒号（分隔文件路径和行号）
+      const secondLastColonIndex = beforeLastColon.lastIndexOf(':');
+      if (secondLastColonIndex === -1) continue;
+
+      const path = beforeLastColon.slice(0, secondLastColonIndex);
+      const lineNumStr = beforeLastColon.slice(secondLastColonIndex + 1);
+      const lineNum = parseInt(lineNumStr, 10);
+
+      if (isNaN(lineNum)) continue;
+
+      results.push({
+        path,
+        line: lineNum,
+        content: content.trim().slice(0, 200), // 截断过长的行
+      });
+    }
+  } catch (error) {
+    // grep 没有匹配时会返回 exit code 1，这不是错误
+    if (error instanceof Error && 'status' in error && (error as { status: number }).status === 1) {
+      // 没有匹配结果，返回空数组
+      return results;
+    }
+    // 其他错误则抛出
+    throw error;
   }
+
+  return results;
 }
 
 /**
@@ -78,9 +115,9 @@ export function createGrepFilesTool(projectDir: string): Tool {
   return {
     name: 'grep_files',
     description:
-      '在项目中搜索匹配的代码行。返回匹配行的文件路径、行号和内容。适合快速定位代码位置。',
+      '在项目中搜索匹配的代码行。支持扩展正则表达式（POSIX ERE）。返回匹配行的文件路径、行号和内容。适合快速定位代码位置。注意：仅适用于 Unix/Linux/Mac 系统。',
     parameters: z.object({
-      pattern: z.string().describe('搜索词或正则表达式'),
+      pattern: z.string().describe('搜索词或正则表达式（支持 POSIX 扩展正则，如 [0-9]+, (abc|def) 等）'),
       directory: z
         .string()
         .optional()
@@ -105,16 +142,7 @@ export function createGrepFilesTool(projectDir: string): Tool {
       }
 
       try {
-        // 尝试将 pattern 解析为正则，如果失败则作为普通字符串
-        let regex: RegExp;
-        try {
-          regex = new RegExp(args.pattern, 'i');
-        } catch {
-          regex = new RegExp(args.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        }
-
-        const results: { path: string; line: number; content: string }[] = [];
-        searchInDirectory(searchDir, regex, args.directory || '', includes, maxResults, results);
+        const results = grepSearch(searchDir, args.pattern, includes, maxResults);
 
         console.log(`[fs:grep_files] Found ${results.length} matches for "${args.pattern}"`);
 

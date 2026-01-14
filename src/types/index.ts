@@ -8,7 +8,7 @@
 import { z } from 'zod';
 
 // Import unified message types for use in this file
-import type { UnifiedMessage, MessageSyncEvent } from './unified-message.js';
+import type { UnifiedMessage } from './unified-message.js';
 
 // Re-export unified message types
 export * from './unified-message.js';
@@ -191,8 +191,7 @@ export type ReActEvent =
   | ToolCallResultEvent
   | FinalResultEvent
   | ErrorEvent
-  | NormalMessageEvent
-  | MessageSyncEvent;
+  | NormalMessageEvent;
 /**
  * 处理 ReAct 事件的回调函数类型
  */
@@ -441,6 +440,9 @@ export interface PlannerInput {
 
   /** 计划更新时的专用回调 */
   onPlanUpdate?: (plan: Plan) => void | Promise<void>;
+
+  /** 可选的历史消息（用于多轮对话还原） */
+  initialMessages?: UnifiedMessage[];
 }
 
 /**

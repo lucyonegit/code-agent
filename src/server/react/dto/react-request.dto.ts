@@ -8,11 +8,11 @@ export class ReactRequestDto {
   @IsString()
   input!: string;
 
-  @IsArray()
+  @IsString()
   @IsOptional()
-  tools?: string[];
+  conversationId?: string;
 
   @IsArray()
   @IsOptional()
-  history?: any[];
+  tools?: string[];
 }

@@ -1,0 +1,58 @@
+{
+  "conversationId": "conv_1768362675381",
+  "version": 2,
+  "messages": [
+    {
+      "id": "user_1768362675382",
+      "role": "user",
+      "type": "user",
+      "content": "杭州天气怎么样？",
+      "timestamp": 1768362675382
+    },
+    {
+      "id": "thought_1768362675393_1 ",
+      "role": "assistant",
+      "type": "thought",
+      "content": "我需要获取杭州的天气信息。这是一个直接的天气查询任务，我可以使用 get_weather 工具来获取杭州当前的天气情况。",
+      "timestamp": 1768362679216,
+      "isComplete": true
+    },
+    {
+      "id": "tool_toolu_bdrk_01HQE5EJ3i9Eb7JidtEKbwcj",
+      "role": "assistant",
+      "type": "tool_call",
+      "content": "get_weather",
+      "toolCallId": "toolu_bdrk_01HQE5EJ3i9Eb7JidtEKbwcj",
+      "toolName": "get_weather",
+      "args": {
+        "location": "杭州"
+      },
+      "timestamp": 1768362679218
+    },
+    {
+      "id": "tool_result_toolu_bdrk_01HQE5EJ3i9Eb7JidtEKbwcj",
+      "role": "tool",
+      "type": "tool_result",
+      "content": "{\"location\":\"杭州\",\"temperature\":25,\"unit\":\"celsius\",\"condition\":\"晴天\",\"humidity\":60}",
+      "toolCallId": "toolu_bdrk_01HQE5EJ3i9Eb7JidtEKbwcj",
+      "toolName": "get_weather",
+      "result": "{\"location\":\"杭州\",\"temperature\":25,\"unit\":\"celsius\",\"condition\":\"晴天\",\"humidity\":60}",
+      "success": true,
+      "duration": 2,
+      "timestamp": 1768362679220
+    },
+    {
+      "id": "final_1768362681982",
+      "role": "assistant",
+      "type": "final_result",
+      "content": "杭州当前天气情况：\n- 温度：25°C\n- 天气状况：晴天\n- 湿度：60%\n\n今天杭州天气不错，是晴天，温度适宜在25度，湿度也比较舒适。适合外出活动。",
+      "timestamp": 1768362681981
+    }
+  ],
+  "metadata": {
+    "createdAt": "2026-01-14T03:51:15.382Z",
+    "updatedAt": "2026-01-14T03:51:21.982Z",
+    "totalTurns": 1,
+    "lastUserInput": "杭州天气怎么样？"
+  }
+}

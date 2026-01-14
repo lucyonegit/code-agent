@@ -20,6 +20,7 @@ export type StoredMessageType =
   | 'thought'
   | 'normal_message'
   | 'tool_call'
+  | 'tool_result'
   | 'final_result'
   | 'error';
 
@@ -28,10 +29,11 @@ export type StoredMessageType =
  */
 export interface StoredMessage {
   id: string;
+  role: 'user' | 'assistant' | 'tool';  // 用于转换为 LangChain Message
   type: StoredMessageType;
   content: string;
   timestamp: number;
-  // 工具调用相关 (type === 'tool_call' 时使用)
+  // 工具调用相关 (type === 'tool_call' 或 'tool_result' 时使用)
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;
@@ -276,6 +278,7 @@ export class ConversationCollector {
   addUserMessage(content: string): void {
     this.messages.push({
       id: `user_${Date.now()}`,
+      role: 'user',
       type: 'user',
       content,
       timestamp: Date.now(),
@@ -291,6 +294,7 @@ export class ConversationCollector {
       if (this.currentThought && this.currentThought.content) {
         this.messages.push({
           id: this.currentThought.id,
+          role: 'assistant',
           type: 'thought',
           content: this.currentThought.content,
           timestamp: Date.now(),
@@ -308,6 +312,7 @@ export class ConversationCollector {
     if (isComplete && this.currentThought) {
       this.messages.push({
         id: this.currentThought.id,
+        role: 'assistant',
         type: 'thought',
         content: this.currentThought.content,
         timestamp: Date.now(),
@@ -327,6 +332,7 @@ export class ConversationCollector {
   ): void {
     const msg: StoredMessage = {
       id: `tool_${toolCallId}`,
+      role: 'assistant',
       type: 'tool_call',
       content: toolName,
       toolCallId,
@@ -340,6 +346,7 @@ export class ConversationCollector {
 
   /**
    * 处理工具调用结果事件
+   * 总是添加一条 tool 角色的消息，用于 LangChain 转换
    */
   handleToolCallResult(
     toolCallId: string,
@@ -348,26 +355,19 @@ export class ConversationCollector {
     success: boolean,
     duration: number
   ): void {
-    const existingMsg = this.toolCallMap.get(toolCallId);
-    if (existingMsg) {
-      // 更新已存在的消息
-      existingMsg.result = result;
-      existingMsg.success = success;
-      existingMsg.duration = duration;
-    } else {
-      // 没有找到对应的 tool_call，创建新消息
-      this.messages.push({
-        id: `tool_${toolCallId}`,
-        type: 'tool_call',
-        content: toolName,
-        toolCallId,
-        toolName,
-        result,
-        success,
-        duration,
-        timestamp: Date.now(),
-      });
-    }
+    // 添加 tool 角色的结果消息
+    this.messages.push({
+      id: `tool_result_${toolCallId}`,
+      role: 'tool',
+      type: 'tool_result',
+      content: result,  // content 存储实际结果
+      toolCallId,
+      toolName,
+      result,
+      success,
+      duration,
+      timestamp: Date.now(),
+    });
   }
 
   /**
@@ -378,6 +378,7 @@ export class ConversationCollector {
     if (this.currentThought && this.currentThought.content) {
       this.messages.push({
         id: this.currentThought.id,
+        role: 'assistant',
         type: 'thought',
         content: this.currentThought.content,
         timestamp: Date.now(),
@@ -388,6 +389,7 @@ export class ConversationCollector {
 
     this.messages.push({
       id: `final_${Date.now()}`,
+      role: 'assistant',
       type: 'final_result',
       content,
       timestamp: Date.now(),
@@ -400,6 +402,7 @@ export class ConversationCollector {
   addError(message: string): void {
     this.messages.push({
       id: `error_${Date.now()}`,
+      role: 'assistant',
       type: 'error',
       content: message,
       timestamp: Date.now(),
@@ -412,6 +415,7 @@ export class ConversationCollector {
   addNormalMessage(messageId: string, content: string): void {
     this.messages.push({
       id: messageId,
+      role: 'assistant',
       type: 'normal_message',
       content,
       timestamp: Date.now(),

@@ -15,7 +15,7 @@ export class ToolHandler {
     private tools: Tool[],
     private logger: ReActLogger,
     private onMessage?: ReActInput['onMessage']
-  ) {}
+  ) { }
 
   /**
    * 批量处理工具调用
@@ -55,24 +55,6 @@ export class ToolHandler {
     args: any;
   }): Promise<ToolExecutionResult> {
     const answer = (call.args as { answer?: string }).answer || JSON.stringify(call.args);
-    const toolCallId = call.id || `call_${Date.now()}`;
-
-    // 发出 final_result 事件会在 executor 中统一处理，主要发出 sync 和 tool events
-    // 发送 tool 消息同步事件
-    const toolMsgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    await this.emitEvent({
-      type: 'message_sync',
-      message: {
-        id: toolMsgId,
-        role: 'tool',
-        toolCallId,
-        toolName: call.name,
-        toolResult: answer,
-        success: true,
-        timestamp: Date.now(),
-      },
-      timestamp: Date.now(),
-    });
 
     return { type: 'final_answer', answer };
   }
@@ -158,22 +140,6 @@ export class ToolHandler {
       result: tool_result,
       success,
       duration: toolDuration,
-      timestamp: Date.now(),
-    });
-
-    // 发送 tool 消息同步事件
-    const toolMsgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    await this.emitEvent({
-      type: 'message_sync',
-      message: {
-        id: toolMsgId,
-        role: 'tool',
-        toolCallId,
-        toolName: toolCall.name,
-        toolResult: tool_result,
-        success,
-        timestamp: Date.now(),
-      },
       timestamp: Date.now(),
     });
 

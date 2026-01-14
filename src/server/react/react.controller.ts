@@ -2,7 +2,7 @@
  * ReAct 执行控制器
  */
 
-import { Controller, Post, Body, Res, HttpException, HttpStatus, Inject } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Res, Inject } from '@nestjs/common';
 import { Response } from 'express';
 import { ReactService } from './react.service';
 import { ReactRequestDto } from './dto/react-request.dto';
@@ -11,18 +11,20 @@ import { ReactRequestDto } from './dto/react-request.dto';
 export class ReactController {
   constructor(@Inject(ReactService) private readonly reactService: ReactService) { }
 
+  /**
+   * 执行 ReAct 推理
+   */
   @Post()
   async execute(@Body() dto: ReactRequestDto, @Res() res: Response) {
     // 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');  // 禁用反向代理缓冲
+    res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // 立即发送响应头，禁用 Nagle 算法
     res.flushHeaders();
     if (res.socket) {
       res.socket.setNoDelay(true);
@@ -31,18 +33,16 @@ export class ReactController {
     const sendSSE = (event: string, data: unknown) => {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
-      // 强制刷新 TCP 缓冲区
       if (typeof (res as any).flush === 'function') {
         (res as any).flush();
       }
     };
 
-
     try {
       const {
         input,
+        conversationId = `conv_${Date.now()}`,
         tools: toolNames = ['get_weather', 'calculator', 'web_search'],
-        history = [],
       } = dto;
 
       if (!input) {
@@ -51,16 +51,18 @@ export class ReactController {
         return;
       }
 
+      // 发送 conversationId 给客户端
+      sendSSE('conversation_id', { conversationId });
+
       const result = await this.reactService.run(
+        conversationId,
         input,
         toolNames,
-        history,
         (event) => {
           sendSSE(event.type, event);
         }
       );
 
-      // 发送完成事件
       sendSSE('done', { result });
       res.end();
     } catch (error) {
@@ -68,5 +70,34 @@ export class ReactController {
       sendSSE('error', { message });
       res.end();
     }
+  }
+
+  /**
+   * 获取会话列表
+   */
+  @Get('conversations')
+  async listConversations() {
+    return this.reactService.listConversations();
+  }
+
+  /**
+   * 获取会话详情
+   */
+  @Get('conversation/:id')
+  async getConversation(@Param('id') id: string) {
+    const conversation = await this.reactService.getConversation(id);
+    if (!conversation) {
+      return { error: 'Conversation not found' };
+    }
+    return conversation;
+  }
+
+  /**
+   * 删除会话
+   */
+  @Delete('conversation/:id')
+  async deleteConversation(@Param('id') id: string) {
+    const success = await this.reactService.deleteConversation(id);
+    return { success };
   }
 }

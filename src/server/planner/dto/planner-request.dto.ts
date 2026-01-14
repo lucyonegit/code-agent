@@ -8,6 +8,10 @@ export class PlannerRequestDto {
   @IsString()
   goal!: string;
 
+  @IsString()
+  @IsOptional()
+  conversationId?: string;
+
   @IsArray()
   @IsOptional()
   tools?: string[];

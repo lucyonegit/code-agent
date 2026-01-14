@@ -170,14 +170,14 @@ export class PlannerExecutor {
    * 运行 Planner + ReAct
    */
   async run(input: PlannerInput): Promise<PlannerResult> {
-    const { goal, tools, onMessage, onPlanUpdate } = input;
+    const { goal, tools, onMessage, onPlanUpdate, initialMessages } = input;
 
     try {
       // 步骤 1：生成初始计划
       const plan = await this.generatePlan(goal, tools);
 
       // 步骤 2：执行计划步骤
-      const rePlanAttempts = 0;
+      let isFirstStep = true;
 
       while (!this.isPlanComplete(plan)) {
         const currentStep = this.getNextStep(plan);
@@ -213,13 +213,15 @@ export class PlannerExecutor {
         });
 
         console.log('ReAct Executor Running...');
-        // 执行步骤
+        // 执行步骤，第一个步骤传递历史消息
         const stepResult = await executor.run({
           input: currentStep.description,
           context: this.formatPlanHistory(plan),
           tools: stepTools,
           onMessage,
+          initialMessages: isFirstStep ? initialMessages : undefined,
         });
+        isFirstStep = false;
 
         // 更新步骤状态
         currentStep.result = stepResult;

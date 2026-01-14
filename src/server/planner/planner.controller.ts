@@ -2,7 +2,7 @@
  * Planner 执行控制器
  */
 
-import { Controller, Post, Body, Res, Inject } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Res, Inject } from '@nestjs/common';
 import { Response } from 'express';
 import { PlannerService } from './planner.service';
 import { PlannerRequestDto } from './dto/planner-request.dto';
@@ -11,18 +11,20 @@ import { PlannerRequestDto } from './dto/planner-request.dto';
 export class PlannerController {
   constructor(@Inject(PlannerService) private readonly plannerService: PlannerService) { }
 
+  /**
+   * 执行 Planner 规划
+   */
   @Post()
   async execute(@Body() dto: PlannerRequestDto, @Res() res: Response) {
     // 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');  // 禁用反向代理缓冲
+    res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // 立即发送响应头，禁用 Nagle 算法
     res.flushHeaders();
     if (res.socket) {
       res.socket.setNoDelay(true);
@@ -31,15 +33,17 @@ export class PlannerController {
     const sendSSE = (event: string, data: unknown) => {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
-      // 强制刷新 TCP 缓冲区
       if (typeof (res as any).flush === 'function') {
         (res as any).flush();
       }
     };
 
-
     try {
-      const { goal, tools: toolNames = ['get_weather', 'calculator', 'web_search'] } = dto;
+      const {
+        goal,
+        conversationId = `plan_${Date.now()}`,
+        tools: toolNames = ['get_weather', 'calculator', 'web_search']
+      } = dto;
 
       if (!goal) {
         sendSSE('error', { message: '缺少 goal 参数' });
@@ -47,7 +51,11 @@ export class PlannerController {
         return;
       }
 
+      // 发送 conversationId 给客户端
+      sendSSE('conversation_id', { conversationId });
+
       const result = await this.plannerService.run(
+        conversationId,
         goal,
         toolNames,
         (event) => {
@@ -58,7 +66,6 @@ export class PlannerController {
         }
       );
 
-      // 发送完成事件
       sendSSE('planner_done', {
         type: 'planner_done',
         success: result.success,
@@ -71,5 +78,34 @@ export class PlannerController {
       sendSSE('error', { message });
       res.end();
     }
+  }
+
+  /**
+   * 获取会话列表
+   */
+  @Get('conversations')
+  async listConversations() {
+    return this.plannerService.listConversations();
+  }
+
+  /**
+   * 获取会话详情
+   */
+  @Get('conversation/:id')
+  async getConversation(@Param('id') id: string) {
+    const data = await this.plannerService.getConversation(id);
+    if (!data.conversation) {
+      return { error: 'Conversation not found' };
+    }
+    return data;
+  }
+
+  /**
+   * 删除会话
+   */
+  @Delete('conversation/:id')
+  async deleteConversation(@Param('id') id: string) {
+    const success = await this.plannerService.deleteConversation(id);
+    return { success };
   }
 }

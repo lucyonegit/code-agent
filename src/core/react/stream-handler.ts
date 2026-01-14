@@ -108,24 +108,6 @@ export class StreamHandler {
       tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
     });
 
-    // 发送 assistant 消息同步事件
-    const assistantMsgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    await this.emitEvent({
-      type: 'message_sync',
-      message: {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: accumulatedContent,
-        toolCalls: toolCalls.map(tc => ({
-          id: tc.id || `call_${Date.now()}`,
-          name: tc.name,
-          args: tc.args as Record<string, unknown>,
-        })),
-        timestamp: Date.now(),
-      },
-      timestamp: Date.now(),
-    });
-
     return {
       content: accumulatedContent,
       toolCalls: toolCalls.map(tc => ({

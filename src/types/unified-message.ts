@@ -1,15 +1,14 @@
 /**
- * 统一消息格式 - 用于前后端消息历史同步
+ * 统一消息格式 - 用于会话历史存储和 LangChain 转换
  *
  * 解决的问题：
  * - 后端使用 LangChain 的 AIMessage/ToolMessage 维护历史
  * - 前端使用细粒度 events (thought, tool_call, tool_result) 展示
- * - 多轮对话时无法从前端 events 还原后端 messages
+ * - 多轮对话时需要将存储的消息转换为 LangChain 消息
  *
  * 解决方案：
  * - 定义统一消息格式作为 Single Source of Truth
- * - 后端在每次迭代后发送 message_sync 事件
- * - 前端累积 UnifiedMessage 数组用于历史还原
+ * - 存储时添加 role 字段，读取时直接转换为 LangChain 消息
  */
 
 /**
@@ -52,15 +51,4 @@ export interface UnifiedMessage {
   toolResult?: any;
   /** 工具执行是否成功 (仅 tool 消息) */
   success?: boolean;
-}
-
-/**
- * 消息同步事件 - 用于前后端历史同步
- */
-export interface MessageSyncEvent {
-  type: 'message_sync';
-  /** 同步的消息 */
-  message: UnifiedMessage;
-  /** 时间戳 */
-  timestamp: number;
 }

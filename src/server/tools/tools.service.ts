@@ -241,19 +241,40 @@ export class ToolsService {
    * 获取所有可用工具的简要信息
    */
   getToolsList() {
-    return Object.keys(AVAILABLE_TOOLS).map(name => ({
+    const staticTools = Object.keys(AVAILABLE_TOOLS).map(name => ({
       name,
       description: AVAILABLE_TOOLS[name].description,
     }));
+
+    // 添加动态工具的元数据
+    return [
+      ...staticTools,
+      {
+        name: 'write_article',
+        description: '将生成的文章、文档或长文本写入会话对应的 artifacts 目录。',
+      },
+    ];
   }
 
   /**
    * 根据名称获取工具列表
+   * @param names 工具名称
+   * @param context 可选的上下文信息（用于初始化 write_article 等工具）
    */
-  getToolsByNames(names: string[]): Tool[] {
-    return names
-      .filter(name => AVAILABLE_TOOLS[name])
-      .map(name => AVAILABLE_TOOLS[name]);
+  getToolsByNames(names: string[], context?: { mode: 'react' | 'plan', conversationId: string }): Tool[] {
+    const tools: Tool[] = [];
+
+    for (const name of names) {
+      if (AVAILABLE_TOOLS[name]) {
+        tools.push(AVAILABLE_TOOLS[name]);
+      } else if (name === 'write_article' && context) {
+        // 动态创建 write_article 工具
+        const { createWriteArticleTool } = require('./write-article.tool');
+        tools.push(createWriteArticleTool(context.mode, context.conversationId));
+      }
+    }
+
+    return tools;
   }
 
   /**

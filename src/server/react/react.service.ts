@@ -30,7 +30,10 @@ export class ReactService {
     onMessage: (event: ReActEvent) => void
   ) {
     // 获取请求的工具
-    const tools: Tool[] = this.toolsService.getToolsByNames(toolNames);
+    const tools: Tool[] = this.toolsService.getToolsByNames(toolNames, {
+      mode: 'react',
+      conversationId,
+    });
 
     if (tools.length === 0) {
       throw new Error('没有可用的工具');

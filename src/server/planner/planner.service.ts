@@ -31,7 +31,10 @@ export class PlannerService {
     onPlanUpdate: (plan: Plan) => void
   ) {
     // 获取请求的工具
-    const tools: Tool[] = this.toolsService.getToolsByNames(toolNames);
+    const tools: Tool[] = this.toolsService.getToolsByNames(toolNames, {
+      mode: 'plan',
+      conversationId,
+    });
 
     if (tools.length === 0) {
       throw new Error('没有可用的工具');
@@ -135,7 +138,7 @@ export class PlannerService {
       plannerModel: 'claude-sonnet-4-20250514',
       executorModel: 'claude-sonnet-4-20250514',
       provider: 'claude',
-      maxIterationsPerStep: 10,
+      maxIterationsPerStep: 30,
       maxRePlanAttempts: 3,
     });
 

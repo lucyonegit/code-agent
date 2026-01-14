@@ -137,10 +137,10 @@ export class ReactService {
 
     // 创建 ReActExecutor
     const executor = new ReActExecutor({
-      model: 'claude-sonnet-4-20250514',
-      provider: 'claude',
+      model: 'gemini-2.5-flash',
+      provider: 'gemini',
       streaming: true,
-      maxIterations: 10,
+      maxIterations: 30,
     });
 
     // 执行并返回结果

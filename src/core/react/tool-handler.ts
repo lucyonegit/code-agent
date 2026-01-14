@@ -54,7 +54,10 @@ export class ToolHandler {
     name: string;
     args: any;
   }): Promise<ToolExecutionResult> {
-    const answer = (call.args as { answer?: string }).answer || JSON.stringify(call.args);
+    // 参数现在直接是字符串（z.string() schema）或兼容旧格式的对象
+    const answer = typeof call.args === 'string'
+      ? call.args
+      : (call.args as { answer?: string }).answer || JSON.stringify(call.args);
 
     return { type: 'final_answer', answer };
   }

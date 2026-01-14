@@ -39,8 +39,10 @@ export class StreamHandler {
     // 累积内容和工具调用
     let accumulatedContent = '';
     let accumulatedToolCalls: AccumulatedToolCall[] = [];
-
-    /** @type {AccumulatedToolCall[]} */
+    // 用于跟踪 give_final_answer 流式输出的 ID
+    let currentFinalAnswerId: string | null = null;
+    // 用于跟踪已发送的 answer 内容长度
+    let previousAnswerLength = 0;
 
     // 处理流式数据Thought & ToolCall
     for await (const chunk of stream) {
@@ -72,7 +74,47 @@ export class StreamHandler {
           accumulatedToolCalls,
           chunk.tool_call_chunks as ToolCallChunk[]
         );
+
+        // 检查是否正在调用 give_final_answer 工具，如果是则流式输出
+        const finalAnswerCall = accumulatedToolCalls.find(tc => tc.name === 'give_final_answer');
+        if (finalAnswerCall) {
+          // 生成或复用 answerId
+          if (!currentFinalAnswerId) {
+            currentFinalAnswerId = `final_${Date.now()}`;
+            previousAnswerLength = 0;
+          }
+
+          // 提取当前完整的 answer 内容
+          const currentAnswer = this.extractAnswerContent(finalAnswerCall.args);
+
+          // 只发送增量部分
+          if (currentAnswer.length > previousAnswerLength) {
+            const newChunk = currentAnswer.slice(previousAnswerLength);
+            previousAnswerLength = currentAnswer.length;
+
+            if (newChunk) {
+              await this.emitEvent({
+                type: 'final_answer_stream',
+                answerId: currentFinalAnswerId,
+                chunk: newChunk,
+                isComplete: false,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
       }
+    }
+
+    // 如果有流式的最终答案，发送完成事件
+    if (currentFinalAnswerId) {
+      await this.emitEvent({
+        type: 'final_answer_stream',
+        answerId: currentFinalAnswerId,
+        chunk: '',
+        isComplete: true,
+        timestamp: Date.now(),
+      });
     }
 
     if (accumulatedContent) {
@@ -128,5 +170,35 @@ export class StreamHandler {
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-}
 
+  /**
+   * 从 JSON 对象片段中提取 answer 字段的值
+   * 参数格式: {"answer": "内容..."}
+   * 流式时会逐步收到: {"answer": " → {"answer": "Hello → {"answer": "Hello World"}
+   */
+  private extractAnswerContent(argsJson: string): string {
+    // 尝试匹配 "answer": "..." 模式
+    const match = argsJson.match(/"answer"\s*:\s*"/);
+    if (!match) {
+      return '';
+    }
+
+    // 提取 "answer": " 之后的内容
+    const startIndex = match.index! + match[0].length;
+    let content = argsJson.slice(startIndex);
+
+    // 去除结尾的 "} 如果有的话（JSON 完成时会有）
+    if (content.endsWith('"}')) {
+      content = content.slice(0, -2);
+    } else if (content.endsWith('"')) {
+      content = content.slice(0, -1);
+    }
+
+    // 处理转义字符
+    return content
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+  }
+}

@@ -1,24 +1,24 @@
 /**
- * finish 工具定义
- * 用作 ReActExecutor 的 finalAnswerTool
+ * coding_complete 工具定义
+ * 用于标记代码生成/修改完成，并收集 npm 依赖变更信息
+ * 注意：这是一个普通工具，不再作为 ReActExecutor 的 finalAnswerTool
  */
 
 import { z } from 'zod';
 import type { Tool } from '../../../../types/index';
 
 /**
- * 创建 finish 工具
+ * 创建 coding_complete 工具
  * 包含 npm_dependencies 和 npm_dependencies_to_remove 参数用于管理第三方依赖
+ * 调用此工具后，LLM 应继续调用 give_final_answer 来总结工作
  */
-export function createFinishToolAsFinalAnswer(): Tool {
+export function createCodingCompleteTool(): Tool {
   return {
-    name: 'finish',
+    name: 'coding_complete',
     description:
-      '当所有文件生成/修改完毕时调用此工具。必须提供生成摘要，并声明 npm 依赖的添加和删除。',
+      '当所有文件生成/修改完毕后调用此工具，声明 npm 依赖变更。调用此工具后，应继续调用 give_final_answer 工具来总结本次工作。',
     returnType: 'json',
     parameters: z.object({
-      summary: z.string().optional().describe('生成摘要，说明生成、修改或删除了哪些文件'),
-      answer: z.string().optional().describe('summary 的别名，用于兼容性'),
       npm_dependencies: z
         .record(z.string())
         .optional()
@@ -35,7 +35,7 @@ export function createFinishToolAsFinalAnswer(): Tool {
     execute: async args => {
       return JSON.stringify({
         success: true,
-        summary: args.summary || args.answer || 'Completed',
+        message: 'Code generation/modification completed. Please call give_final_answer to summarize.',
         npm_dependencies: args.npm_dependencies || {},
         npm_dependencies_to_remove: args.npm_dependencies_to_remove || [],
       });

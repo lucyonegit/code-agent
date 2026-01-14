@@ -38,7 +38,6 @@ export class ReActExecutor {
     apiKey?: string;
     baseUrl?: string;
     userMessageTemplate: (input: string, toolDescriptions: string, context?: string) => string;
-    finalAnswerTool: Tool;
     logLevel: LogLevel;
   };
 
@@ -61,7 +60,6 @@ export class ReActExecutor {
       apiKey: config.apiKey,
       baseUrl: config.baseUrl,
       userMessageTemplate: config.userMessageTemplate ?? defaultUserMessageTemplate,
-      finalAnswerTool: config.finalAnswerTool || defaultFinalAnswerTool,
       logLevel,
     };
 
@@ -90,8 +88,8 @@ export class ReActExecutor {
       streaming: this.config.streaming,
     });
 
-    // 如果提供了最终答案工具，添加到工具列表
-    const allTools = this.config.finalAnswerTool ? [...tools, this.config.finalAnswerTool] : tools;
+    // 最终答案工具始终使用内部默认实现
+    const allTools = [...tools, defaultFinalAnswerTool];
 
     // 转换为 LangChain 工具格式并绑定
     const langChainTools = toolsToLangChain(allTools);
@@ -102,11 +100,9 @@ export class ReActExecutor {
     // 构建提示词的工具描述
     const toolDescriptions = formatToolDescriptions(tools);
 
-    // 构建系统提示词（如果有最终答案工具，添加使用说明）
+    // 构建系统提示词（始终添加最终答案工具使用说明）
     let systemPrompt = this.config.systemPrompt;
-    if (this.config.finalAnswerTool) {
-      systemPrompt += FINAL_ANSWER_PROMPT_SUFFIX(this.config.finalAnswerTool.name);
-    }
+    systemPrompt += FINAL_ANSWER_PROMPT_SUFFIX(defaultFinalAnswerTool.name);
 
     // 初始化对话历史
     const messages: BaseMessage[] = [new SystemMessage(systemPrompt)];
@@ -206,7 +202,7 @@ export class ReActExecutor {
 
           const result = await toolHandler.handleToolCalls(
             toolCalls,
-            this.config.finalAnswerTool?.name
+            defaultFinalAnswerTool.name
           );
 
           if (result.type === 'final_answer') {

@@ -12,7 +12,7 @@ export {
 
 // 工具函数
 export { topologicalSort, fetchRagContext, extractKeywords } from './utils';
-export { createFinishToolAsFinalAnswer } from './finish-tool';
+export { createCodingCompleteTool } from './finish-tool';
 export { handleNpmDependencies, parseNpmDependencies } from './npm-handler';
 export { setupProjectDirectory, collectGeneratedFiles } from './shared';
 

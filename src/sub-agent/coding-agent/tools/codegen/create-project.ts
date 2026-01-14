@@ -31,7 +31,7 @@ import {
   topologicalSort,
   fetchRagContext,
   extractKeywords,
-  createFinishToolAsFinalAnswer,
+  createCodingCompleteTool,
   handleNpmDependencies,
   parseNpmDependencies,
   collectGeneratedFiles,
@@ -104,6 +104,7 @@ export function createFsCodeGenTool(
         createWriteFileTool(tempDir),
         createReadFileTool(tempDir),
         createDeleteFileTool(tempDir),
+        createCodingCompleteTool(),  // 作为普通工具，用于收集 npm 依赖
       ];
 
       // 获取 RAG 上下文
@@ -143,7 +144,6 @@ export function createFsCodeGenTool(
         baseUrl: config.baseUrl,
         maxIterations,
         systemPrompt: CODE_GEN_SYSTEM_PROMPT,
-        finalAnswerTool: createFinishToolAsFinalAnswer(),
         streaming: true,
         logLevel: LogLevel.DEBUG,
       });
@@ -157,6 +157,10 @@ export function createFsCodeGenTool(
 
       // 执行 ReAct 循环
       let finalSummary = '';
+      // 用于从 coding_complete 工具结果中捕获 npm 依赖
+      let capturedNpmDependencies: Record<string, string> = {};
+      let capturedNpmDependenciesToRemove: string[] = [];
+
       const result = await executor.run({
         input: userPrompt,
         tools: fsTools,
@@ -204,6 +208,21 @@ export function createFsCodeGenTool(
                 duration: event.duration,
                 timestamp: event.timestamp,
               });
+
+              // 捕获 coding_complete 工具的 npm 依赖信息
+              if (event.toolName === 'coding_complete' && event.success) {
+                try {
+                  const resultObj = JSON.parse(String(event.result));
+                  if (resultObj.npm_dependencies) {
+                    capturedNpmDependencies = resultObj.npm_dependencies;
+                  }
+                  if (resultObj.npm_dependencies_to_remove) {
+                    capturedNpmDependenciesToRemove = resultObj.npm_dependencies_to_remove;
+                  }
+                } catch (e) {
+                  console.warn('[CreateProject] Failed to parse coding_complete result:', e);
+                }
+              }
             } else if (event.type === 'final_result') {
               finalSummary = event.content;
             }
@@ -211,10 +230,18 @@ export function createFsCodeGenTool(
         },
       });
 
-      // 解析最终摘要和 npm 依赖变更
-      const { summary, npmDependencies, npmDependenciesToRemove } = parseNpmDependencies(
-        finalSummary || result
-      );
+      // 使用捕获的 npm 依赖（优先）或从最终摘要解析
+      let npmDependencies = capturedNpmDependencies;
+      let npmDependenciesToRemove = capturedNpmDependenciesToRemove;
+      let summary = finalSummary || result;
+
+      // 如果没有捕获到，尝试从 finalSummary 解析（向后兼容）
+      if (Object.keys(npmDependencies).length === 0 && npmDependenciesToRemove.length === 0) {
+        const parsed = parseNpmDependencies(finalSummary || result);
+        npmDependencies = parsed.npmDependencies;
+        npmDependenciesToRemove = parsed.npmDependenciesToRemove;
+        summary = parsed.summary;
+      }
 
       // 读取生成的文件树
       const tree = await readProjectTree(tempDir);

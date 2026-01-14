@@ -19,6 +19,7 @@ export * from './unified-message.js';
 
 /**
  * 使用 Zod 定义的工具参数 Schema
+ * 注意：Gemini/Vertex AI 要求参数必须是 OBJECT 类型
  */
 export type ToolParameterSchema = z.ZodObject<any>;
 
@@ -130,6 +131,17 @@ export interface NormalMessageEvent {
 }
 
 /**
+ * 最终答案流式输出事件
+ */
+export interface FinalAnswerStreamEvent {
+  type: 'final_answer_stream';
+  answerId: string; // 唯一标识符，同一次 give_final_answer 调用使用相同 ID，用于前端合并
+  chunk: string; // 当前片段
+  isComplete: boolean; // 是否完成
+  timestamp: number;
+}
+
+/**
  * 步骤开始事件（Planner 专用）
  */
 export interface StepStartEvent {
@@ -190,6 +202,7 @@ export type ReActEvent =
   | ToolCallEvent
   | ToolCallResultEvent
   | FinalResultEvent
+  | FinalAnswerStreamEvent
   | ErrorEvent
   | NormalMessageEvent;
 /**
@@ -247,12 +260,6 @@ export interface ReActConfig {
 
   /** 自定义用户消息模板 */
   userMessageTemplate?: (input: string, toolDescriptions: string, context?: string) => string;
-
-  /**
-   * 最终答案工具（可选）
-   * 如果提供，ReActExecutor 会自动将其添加到工具列表，并在系统提示词中添加使用说明
-   */
-  finalAnswerTool?: Tool;
 }
 
 /**

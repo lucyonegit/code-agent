@@ -2,7 +2,6 @@
  * ReActExecutor - 核心 ReAct 循环引擎
  */
 
-import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
 import { createLLM } from '../BaseLLM.js';
 import { toolsToLangChain } from '../ToolRegistry.js';

@@ -78,25 +78,32 @@ export function toLangChainToolCalls(accumulated: AccumulatedToolCall[]): Array<
   return accumulated
     .filter(tc => tc.name) // 过滤掉没有 name 的
     .map(tc => {
-      let args: Record<string, any> | null = null;
+      let args: Record<string, any> = {};
       let parseSuccess = false;
 
       try {
         if (tc.args && tc.args.trim()) {
           const parsed = JSON.parse(tc.args);
-          // 检查解析结果是否为有效对象且不为空
-          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+          // 检查解析结果是否为有效对象（允许空对象 {}）
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
             args = parsed;
             parseSuccess = true;
-            console.log(
-              `[StreamHelper] Parsed tool call ${tc.name}:`,
-              JSON.stringify(args).slice(0, 200)
-            );
+            if (Object.keys(args).length > 0) {
+              console.log(
+                `[StreamHelper] Parsed tool call ${tc.name}:`,
+                JSON.stringify(args).slice(0, 200)
+              );
+            } else {
+              console.log(`[StreamHelper] Tool call ${tc.name}: no parameters (empty object)`);
+            }
           } else {
-            console.warn(`[StreamHelper] Skipping tool call ${tc.name}: empty or invalid args object`);
+            console.warn(`[StreamHelper] Skipping tool call ${tc.name}: invalid args type (not object)`);
           }
         } else {
-          console.warn(`[StreamHelper] Skipping tool call ${tc.name}: no args provided`);
+          // 没有参数的工具调用，使用空对象
+          args = {};
+          parseSuccess = true;
+          console.log(`[StreamHelper] Tool call ${tc.name}: no parameters provided, using empty object`);
         }
       } catch (e) {
         console.error(`[StreamHelper] Tool call args parse error for ${tc.name}:`);
@@ -108,7 +115,7 @@ export function toLangChainToolCalls(accumulated: AccumulatedToolCall[]): Array<
       return parseSuccess ? {
         id: tc.id || `call_${tc.index}`,
         name: tc.name,
-        args: args!,
+        args: args,
       } : null;
     })
     .filter((tc): tc is NonNullable<typeof tc> => tc !== null); // 过滤掉解析失败的

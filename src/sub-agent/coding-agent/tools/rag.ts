@@ -39,7 +39,7 @@ export async function searchComponentDocs(
   };
 
   try {
-    const response = await fetch('http://192.168.31.248:3000/query', {
+    const response = await fetch('http://192.168.21.101:3000/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
@@ -76,7 +76,7 @@ export async function searchComponentDocs(
  */
 export async function getComponentList(): Promise<RagQueryResponse> {
   try {
-    const response = await fetch('http://192.168.31.248:3000/getComponentList', {
+    const response = await fetch('http://192.168.21.101:3000/getComponentList', {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });

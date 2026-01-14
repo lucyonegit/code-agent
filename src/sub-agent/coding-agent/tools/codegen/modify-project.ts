@@ -199,6 +199,19 @@ export function createIncrementalCodeGenTool(
               }
             } else if (event.type === 'final_result') {
               finalSummary = event.content;
+              await onProgress({
+                type: 'final_result',
+                content: event.content,
+                timestamp: event.timestamp,
+              });
+            } else if (event.type === 'final_answer_stream') {
+              await onProgress({
+                type: 'final_answer_stream',
+                answerId: event.answerId,
+                chunk: event.chunk,
+                isComplete: event.isComplete,
+                timestamp: event.timestamp,
+              });
             }
           }
         },

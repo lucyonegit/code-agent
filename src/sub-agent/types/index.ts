@@ -235,6 +235,8 @@ export type CodingAgentEvent =
   | { type: 'plan_update'; plan: Plan; timestamp: number }
   | { type: 'error'; message: string; timestamp: number }
   | { type: 'complete'; timestamp: number }
+  | { type: 'final_result'; content: string; timestamp: number }
+  | { type: 'final_answer_stream'; answerId: string; chunk: string; isComplete: boolean; timestamp: number }
   | BDDGeneratedEvent
   | ArchitectureGeneratedEvent
   | CodeGeneratedEvent

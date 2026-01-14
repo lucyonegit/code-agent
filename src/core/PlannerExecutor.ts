@@ -386,7 +386,7 @@ export class PlannerExecutor {
     if (step.requiredTools?.length) {
       return allTools.filter(t => step.requiredTools!.includes(t.name));
     }
-    return allTools;
+    return [];
   }
 
   /** 生成友好的步骤提示消息 */

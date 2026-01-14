@@ -137,8 +137,8 @@ export class ReactService {
 
     // 创建 ReActExecutor
     const executor = new ReActExecutor({
-      model: 'gemini-2.5-flash',
-      provider: 'gemini',
+      model: 'claude-sonnet-4-20250514',
+      provider: 'claude',
       streaming: true,
       maxIterations: 30,
     });

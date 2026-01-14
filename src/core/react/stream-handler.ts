@@ -82,10 +82,16 @@ export class StreamHandler {
           if (!currentFinalAnswerId) {
             currentFinalAnswerId = `final_${Date.now()}`;
             previousAnswerLength = 0;
+            console.log('[StreamHandler] 🔍 开始流式输出 give_final_answer, answerId:', currentFinalAnswerId);
           }
 
           // 提取当前完整的 answer 内容
           const currentAnswer = this.extractAnswerContent(finalAnswerCall.args);
+
+          // 调试日志
+          console.log('[StreamHandler] 📦 args 长度:', finalAnswerCall.args.length,
+            '| answer 长度:', currentAnswer.length,
+            '| 上次长度:', previousAnswerLength);
 
           // 只发送增量部分
           if (currentAnswer.length > previousAnswerLength) {
@@ -93,6 +99,7 @@ export class StreamHandler {
             previousAnswerLength = currentAnswer.length;
 
             if (newChunk) {
+              console.log('[StreamHandler] ✅ 发送 chunk:', newChunk.slice(0, 50) + (newChunk.length > 50 ? '...' : ''));
               await this.emitEvent({
                 type: 'final_answer_stream',
                 answerId: currentFinalAnswerId,

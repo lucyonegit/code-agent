@@ -1,6 +1,6 @@
 node_modules
+react_conversation
 dist
 .env
 logs
 projects
-react_conversation

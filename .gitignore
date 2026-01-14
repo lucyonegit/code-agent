@@ -1,5 +1,6 @@
 node_modules
 react_conversation
+plan_conversation
 dist
 .env
 logs

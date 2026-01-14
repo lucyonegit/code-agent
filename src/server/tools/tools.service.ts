@@ -261,7 +261,7 @@ export class ToolsService {
    * @param names 工具名称
    * @param context 可选的上下文信息（用于初始化 write_article 等工具）
    */
-  getToolsByNames(names: string[], context?: { mode: 'react' | 'plan', conversationId: string }): Tool[] {
+  async getToolsByNames(names: string[], context?: { mode: 'react' | 'plan', conversationId: string }): Promise<Tool[]> {
     const tools: Tool[] = [];
 
     for (const name of names) {
@@ -269,7 +269,7 @@ export class ToolsService {
         tools.push(AVAILABLE_TOOLS[name]);
       } else if (name === 'write_article' && context) {
         // 动态创建 write_article 工具
-        const { createWriteArticleTool } = require('./write-article.tool');
+        const { createWriteArticleTool } = await import('./write-article.tool.js');
         tools.push(createWriteArticleTool(context.mode, context.conversationId));
       }
     }

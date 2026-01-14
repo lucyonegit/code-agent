@@ -31,7 +31,7 @@ export class PlannerService {
     onPlanUpdate: (plan: Plan) => void
   ) {
     // 获取请求的工具
-    const tools: Tool[] = this.toolsService.getToolsByNames(toolNames, {
+    const tools: Tool[] = await this.toolsService.getToolsByNames(toolNames, {
       mode: 'plan',
       conversationId,
     });

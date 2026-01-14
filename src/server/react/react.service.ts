@@ -30,7 +30,7 @@ export class ReactService {
     onMessage: (event: ReActEvent) => void
   ) {
     // 获取请求的工具
-    const tools: Tool[] = this.toolsService.getToolsByNames(toolNames, {
+    const tools: Tool[] = await this.toolsService.getToolsByNames(toolNames, {
       mode: 'react',
       conversationId,
     });

@@ -100,4 +100,26 @@ export class ReactController {
     const success = await this.reactService.deleteConversation(id);
     return { success };
   }
+
+  /**
+   * 获取会话的 artifact 文件列表
+   */
+  @Get('conversation/:id/artifacts')
+  async listArtifacts(@Param('id') id: string) {
+    const artifacts = await this.reactService.listArtifacts(id);
+    return { artifacts };
+  }
+
+  /**
+   * 获取单个 artifact 文件内容
+   */
+  @Get('conversation/:id/artifacts/:fileName')
+  async getArtifact(@Param('id') id: string, @Param('fileName') fileName: string) {
+    try {
+      const content = await this.reactService.readArtifact(id, fileName);
+      return { content };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
 }

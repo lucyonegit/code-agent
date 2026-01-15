@@ -2,7 +2,7 @@
  * 推理模式会话管理器
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import type {
   ReactConversation,
@@ -118,7 +118,22 @@ export class ReactConversationManager {
       conversation = createEmptyConversation(conversationId);
     }
 
-    conversation.messages.push(...messages);
+    // 处理消息，对于 artifact_event 进行 upsert
+    for (const msg of messages) {
+      if (msg.type === 'artifact_event') {
+        const existingIndex = conversation.messages.findIndex(m => m.type === msg.type);
+        if (existingIndex !== -1) {
+          // 更新现有消息，保留原 ID
+          conversation.messages[existingIndex] = {
+            ...msg,
+            id: conversation.messages[existingIndex].id,
+          };
+          continue;
+        }
+      }
+      conversation.messages.push(msg);
+    }
+
     conversation.metadata.updatedAt = new Date().toISOString();
 
     // 统计用户消息轮数
@@ -191,7 +206,63 @@ export class ReactConversationManager {
     console.log(`[ReactConversationManager] Deleted conversation ${conversationId}`);
     return true;
   }
+
+  /**
+   * 获取 artifacts 目录路径
+   */
+  getArtifactsPath(conversationId: string): string {
+    return join(getConversationPath(conversationId), ARTIFACTS_DIR);
+  }
+
+  /**
+   * 获取会话的 artifact 文件列表
+   */
+  async listArtifacts(conversationId: string): Promise<Array<{
+    name: string;
+    path: string;
+    type: 'md' | 'html' | 'txt' | 'json' | 'other';
+    size: number;
+  }>> {
+    const artifactsPath = this.getArtifactsPath(conversationId);
+
+    if (!existsSync(artifactsPath)) {
+      return [];
+    }
+
+    const files = readdirSync(artifactsPath, { withFileTypes: true })
+      .filter(f => f.isFile())
+      .map(f => {
+        const filePath = join(artifactsPath, f.name);
+        const stat = statSync(filePath);
+        const ext = f.name.split('.').pop()?.toLowerCase() || '';
+        const type = (['md', 'html', 'txt', 'json'].includes(ext) ? ext : 'other') as 'md' | 'html' | 'txt' | 'json' | 'other';
+
+        return {
+          name: f.name,
+          path: f.name,
+          type,
+          size: stat.size,
+        };
+      });
+
+    return files;
+  }
+
+  /**
+   * 读取单个 artifact 文件内容
+   */
+  async readArtifact(conversationId: string, fileName: string): Promise<string> {
+    const artifactsPath = this.getArtifactsPath(conversationId);
+    const filePath = join(artifactsPath, fileName);
+
+    if (!existsSync(filePath)) {
+      throw new Error(`Artifact not found: ${fileName}`);
+    }
+
+    return readFileSync(filePath, 'utf-8');
+  }
 }
 
 // 导出单例
 export const reactConversationManager = new ReactConversationManager();
+

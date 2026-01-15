@@ -154,6 +154,30 @@ export class ReactService {
       onMessage: wrappedOnMessage,
     });
 
+    // 检查 artifacts 目录并发送 artifact_event
+    const artifacts = await this.conversationManager.listArtifacts(conversationId);
+    if (artifacts.length > 0) {
+      const artifactEvent = {
+        type: 'artifact_event' as const,
+        conversationId,
+        mode: 'react' as const,
+        artifacts,
+        timestamp: Date.now(),
+      };
+
+      // 发送给客户端
+      onMessage(artifactEvent as unknown as ReActEvent);
+
+      // 持久化到会话
+      responseMessages.push({
+        id: `artifact_${Date.now()}`,
+        role: 'assistant',
+        type: 'artifact_event',
+        content: JSON.stringify(artifacts),
+        timestamp: Date.now(),
+      });
+    }
+
     // 保存响应消息
     if (responseMessages.length > 0) {
       await this.conversationManager.appendMessages(conversationId, responseMessages);
@@ -181,6 +205,20 @@ export class ReactService {
    */
   async deleteConversation(conversationId: string) {
     return this.conversationManager.delete(conversationId);
+  }
+
+  /**
+   * 获取会话的 artifact 文件列表
+   */
+  async listArtifacts(conversationId: string) {
+    return this.conversationManager.listArtifacts(conversationId);
+  }
+
+  /**
+   * 读取单个 artifact 文件内容
+   */
+  async readArtifact(conversationId: string, fileName: string) {
+    return this.conversationManager.readArtifact(conversationId, fileName);
   }
 
   /**

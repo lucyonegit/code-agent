@@ -164,6 +164,43 @@ export interface StepCompleteEvent {
 }
 
 // ============================================================================
+// Artifact 事件类型
+// ============================================================================
+
+/**
+ * Artifact 文件类型
+ */
+export type ArtifactFileType = 'md' | 'html' | 'txt' | 'json' | 'other';
+
+/**
+ * Artifact 文件信息
+ */
+export interface ArtifactInfo {
+  /** 文件名 */
+  name: string;
+  /** 相对于 artifacts 目录的路径 */
+  path: string;
+  /** 文件类型 */
+  type: ArtifactFileType;
+  /** 文件大小（字节） */
+  size: number;
+}
+
+/**
+ * Artifact 事件（用于 SSE 推送会话产生的文件资源）
+ */
+export interface ArtifactEvent {
+  type: 'artifact_event';
+  /** 会话 ID */
+  conversationId: string;
+  /** 会话模式 */
+  mode: 'react' | 'plan';
+  /** 文件列表 */
+  artifacts: ArtifactInfo[];
+  timestamp: number;
+}
+
+// ============================================================================
 // 向后兼容类型（保留旧接口别名）
 // ============================================================================
 

@@ -12,7 +12,9 @@ export type StoredMessageType =
   | 'tool_call'
   | 'tool_result'
   | 'final_result'
-  | 'error';
+  | 'error'
+  | 'artifact_event'
+  | 'plan_update';
 
 /**
  * 存储的消息接口
@@ -33,6 +35,8 @@ export interface StoredMessage {
   // 流式状态
   isStreaming?: boolean;
   isComplete?: boolean;
+  // 计划相关
+  plan?: Plan;
 }
 
 /**

@@ -7,9 +7,13 @@ import { PlannerExecutor } from '../../core/PlannerExecutor';
 import {
   PlannerConversationManager,
   plannerConversationManager,
-  type StoredMessage,
+  EventSerializer,
+  type ConversationEvent,
+  type UserEvent,
+  type PlanUpdateEvent,
+  type ArtifactEvent,
 } from '../../core/conversation';
-import type { Tool, ReActEvent, Plan, UnifiedMessage } from '../../types';
+import type { Tool, ReActEvent, Plan } from '../../types';
 import { ToolsService } from '../tools/tools.service';
 
 @Injectable()
@@ -40,113 +44,52 @@ export class PlannerService {
       throw new Error('没有可用的工具');
     }
 
-    // 加载会话历史
+    // 加载会话历史并转换为 LLM 消息格式
     const history = await this.conversationManager.getHistory(conversationId);
-    const unifiedHistory = this.convertToUnifiedMessages(history);
+    const unifiedHistory = EventSerializer.toLLMMessages(history);
 
     // 保存用户消息
-    const userMessage: StoredMessage = {
+    const userEvent: UserEvent = {
       id: `user_${Date.now()}`,
-      role: 'user',
       type: 'user',
       content: goal,
       timestamp: Date.now(),
     };
-    await this.conversationManager.append(conversationId, userMessage);
+    await this.conversationManager.appendEvent(conversationId, userEvent);
 
-    // 收集响应消息
-    const responseMessages: StoredMessage[] = [];
-    let currentThought: { id: string; content: string } | null = null;
+    // 使用 EventSerializer 收集 AI 响应事件
+    const serializer = new EventSerializer();
+    const responseEvents: ConversationEvent[] = [];
 
     const wrappedOnMessage = (event: ReActEvent) => {
-      switch (event.type) {
-        case 'thought':
-          if (!currentThought || currentThought.id !== event.thoughtId) {
-            if (currentThought && currentThought.content) {
-              responseMessages.push({
-                id: currentThought.id,
-                role: 'assistant',
-                type: 'thought',
-                content: currentThought.content,
-                timestamp: Date.now(),
-                isComplete: true,
-              });
-            }
-            currentThought = { id: event.thoughtId, content: event.chunk };
-          } else {
-            currentThought.content += event.chunk;
-          }
-          if (event.isComplete && currentThought) {
-            responseMessages.push({
-              id: currentThought.id,
-              role: 'assistant',
-              type: 'thought',
-              content: currentThought.content,
-              timestamp: Date.now(),
-              isComplete: true,
-            });
-            currentThought = null;
-          }
-          break;
-        case 'tool_call':
-          responseMessages.push({
-            id: `tool_${event.toolCallId}`,
-            role: 'assistant',
-            type: 'tool_call',
-            content: event.toolName,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            args: event.args,
-            timestamp: event.timestamp,
-          });
-          break;
-        case 'tool_call_result':
-          responseMessages.push({
-            id: `tool_result_${event.toolCallId}`,
-            role: 'tool',
-            type: 'tool_result',
-            content: event.result,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            result: event.result,
-            success: event.success,
-            duration: event.duration,
-            timestamp: event.timestamp,
-          });
-          break;
-        case 'final_result':
-          responseMessages.push({
-            id: `final_${Date.now()}`,
-            role: 'assistant',
-            type: 'final_result',
-            content: event.content,
-            timestamp: event.timestamp,
-          });
-          break;
-      }
+      // 1. SSE 推送原始事件（包括流式事件）给前端实时显示
       onMessage(event);
+
+      // 2. 尝试生成持久化事件（流式事件在 isComplete 时才生成）
+      const conversationEvent = serializer.processReActEvent(event);
+      if (conversationEvent) {
+        responseEvents.push(conversationEvent);
+      }
     };
 
     const wrappedOnPlanUpdate = async (plan: Plan) => {
       // 保存计划（plan.json）
       await this.conversationManager.savePlan(conversationId, plan);
 
-      // 在当前响应队列中寻找是否已有计划消息
-      const existingPlanItem = responseMessages.find(m => m.type === 'plan_update');
-      if (existingPlanItem) {
-        existingPlanItem.plan = plan;
-        existingPlanItem.content = plan.goal;
-        existingPlanItem.timestamp = Date.now();
+      // 在当前响应队列中寻找是否已有计划事件
+      const existingPlanEvent = responseEvents.find(e => e.type === 'plan_update') as PlanUpdateEvent | undefined;
+      if (existingPlanEvent) {
+        existingPlanEvent.plan = plan;
+        existingPlanEvent.timestamp = Date.now();
       } else {
-        // 第一次出现，或者是在追加到已有会话（appendMessages 会处理历史覆盖）
-        responseMessages.push({
+        // 第一次出现，添加到响应队列
+        const planEvent: PlanUpdateEvent = {
           id: `plan_${Date.now()}`,
-          role: 'assistant',
           type: 'plan_update',
-          content: plan.goal,
           plan: plan,
           timestamp: Date.now(),
-        });
+        };
+        responseEvents.push(planEvent);
       }
 
       onPlanUpdate(plan);
@@ -173,29 +116,24 @@ export class PlannerService {
     // 检查 artifacts 目录并发送 artifact_event
     const artifacts = await this.conversationManager.listArtifacts(conversationId);
     if (artifacts.length > 0) {
-      const artifactEvent = {
-        type: 'artifact_event' as const,
-        conversationId,
-        mode: 'plan' as const,
+      const artifactEvent: ArtifactEvent = {
+        id: `artifact_${Date.now()}`,
+        type: 'artifact_event',
         artifacts,
+        mode: 'plan',
         timestamp: Date.now(),
       };
+
       // 发送给客户端
       onMessage(artifactEvent as unknown as ReActEvent);
 
       // 持久化到会话
-      responseMessages.push({
-        id: `artifact_${Date.now()}`,
-        role: 'assistant',
-        type: 'artifact_event',
-        content: JSON.stringify(artifacts),
-        timestamp: Date.now(),
-      });
+      responseEvents.push(artifactEvent);
     }
 
-    // 保存响应消息
-    if (responseMessages.length > 0) {
-      await this.conversationManager.appendMessages(conversationId, responseMessages);
+    // 保存响应事件
+    if (responseEvents.length > 0) {
+      await this.conversationManager.appendEvents(conversationId, responseEvents);
     }
 
     return result;
@@ -236,26 +174,5 @@ export class PlannerService {
    */
   async readArtifact(conversationId: string, fileName: string) {
     return this.conversationManager.readArtifact(conversationId, fileName);
-  }
-
-  /**
-   * 将 StoredMessage 转换为 UnifiedMessage
-   */
-  private convertToUnifiedMessages(messages: StoredMessage[]): UnifiedMessage[] {
-    return messages.map(msg => ({
-      id: msg.id,
-      role: msg.role,
-      timestamp: msg.timestamp,
-      content: msg.content,
-      toolCallId: msg.toolCallId,
-      toolName: msg.toolName,
-      toolResult: msg.result,
-      success: msg.success,
-      toolCalls: msg.type === 'tool_call' && msg.toolCallId ? [{
-        id: msg.toolCallId,
-        name: msg.toolName!,
-        args: msg.args || {},
-      }] : undefined,
-    }));
   }
 }

@@ -2,42 +2,9 @@
  * 会话存储相关类型定义
  */
 
-/**
- * 存储的消息类型
- */
-export type StoredMessageType =
-  | 'user'
-  | 'thought'
-  | 'normal_message'
-  | 'tool_call'
-  | 'tool_result'
-  | 'final_result'
-  | 'error'
-  | 'artifact_event'
-  | 'plan_update';
-
-/**
- * 存储的消息接口
- */
-export interface StoredMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'tool';
-  type: StoredMessageType;
-  content: string;
-  timestamp: number;
-  // 工具调用相关
-  toolCallId?: string;
-  toolName?: string;
-  args?: Record<string, unknown>;
-  result?: string;
-  success?: boolean;
-  duration?: number;
-  // 流式状态
-  isStreaming?: boolean;
-  isComplete?: boolean;
-  // 计划相关
-  plan?: Plan;
-}
+// 从 conversation-event.ts 重新导出统一事件类型
+export * from './conversation-event.js';
+import type { ConversationEvent } from './conversation-event.js';
 
 /**
  * 基础会话接口
@@ -45,7 +12,7 @@ export interface StoredMessage {
 export interface BaseConversation {
   conversationId: string;
   version: number;
-  messages: StoredMessage[];
+  events: ConversationEvent[];
   metadata: {
     createdAt: string;
     updatedAt: string;

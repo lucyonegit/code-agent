@@ -7,16 +7,17 @@ import { join } from 'path';
 import type {
   PlannerConversation,
   PlanFile,
-  StoredMessage,
   PlannerConversationListItem,
   Plan,
+  ConversationEvent,
+  UserEvent,
 } from './types.js';
 
 const CONVERSATION_DIR = 'plan_conversation';
 const CONVERSATION_FILENAME = 'conversation.json';
 const PLAN_FILENAME = 'plan.json';
 const ARTIFACTS_DIR = 'artifacts';
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 /**
  * 获取会话根目录
@@ -54,7 +55,7 @@ function createEmptyConversation(conversationId: string): PlannerConversation {
   return {
     conversationId,
     version: CURRENT_VERSION,
-    messages: [],
+    events: [],
     metadata: {
       createdAt: now,
       updatedAt: now,
@@ -123,7 +124,7 @@ export class PlannerConversationManager {
       const content = readFileSync(filePath, 'utf-8');
       const conversation = JSON.parse(content) as PlannerConversation;
       console.log(
-        `[PlannerConversationManager] Loaded ${conversation.messages.length} messages`
+        `[PlannerConversationManager] Loaded ${conversation.events?.length || 0} events`
       );
       return conversation;
     } catch (e) {
@@ -133,56 +134,61 @@ export class PlannerConversationManager {
   }
 
   /**
-   * 追加消息
+   * 追加事件
    */
-  async append(conversationId: string, message: StoredMessage): Promise<void> {
-    await this.appendMessages(conversationId, [message]);
+  async appendEvent(conversationId: string, event: ConversationEvent): Promise<void> {
+    await this.appendEvents(conversationId, [event]);
   }
 
   /**
-   * 批量追加消息
+   * 批量追加事件
    */
-  async appendMessages(conversationId: string, messages: StoredMessage[]): Promise<void> {
+  async appendEvents(conversationId: string, events: ConversationEvent[]): Promise<void> {
     let conversation = await this.load(conversationId);
 
     if (!conversation) {
       conversation = createEmptyConversation(conversationId);
     }
 
-    // 处理消息，对于特定类型（plan_update, artifact_event）进行 upsert
-    for (const msg of messages) {
-      if (msg.type === 'plan_update' || msg.type === 'artifact_event') {
-        const existingIndex = conversation.messages.findIndex(m => m.type === msg.type);
+    // 确保 events 字段存在
+    if (!conversation.events) {
+      conversation.events = [];
+    }
+
+    // 处理事件，对于特定类型（plan_update, artifact_event）进行 upsert
+    for (const event of events) {
+      if (event.type === 'plan_update' || event.type === 'artifact_event') {
+        const existingIndex = conversation.events.findIndex(e => e.type === event.type);
         if (existingIndex !== -1) {
-          // 更新现有消息，保留原 ID 以确保持久化语义一致
-          conversation.messages[existingIndex] = {
-            ...msg,
-            id: conversation.messages[existingIndex].id,
+          // 更新现有事件，保留原 ID 以确保持久化语义一致
+          conversation.events[existingIndex] = {
+            ...event,
+            id: conversation.events[existingIndex].id,
           };
           continue;
         }
       }
-      conversation.messages.push(msg);
+      conversation.events.push(event);
     }
 
     conversation.metadata.updatedAt = new Date().toISOString();
 
-    const userMessages = messages.filter(m => m.type === 'user');
-    if (userMessages.length > 0) {
-      conversation.metadata.totalTurns += userMessages.length;
+    const userEvents = events.filter(e => e.type === 'user') as UserEvent[];
+    if (userEvents.length > 0) {
+      conversation.metadata.totalTurns += userEvents.length;
       conversation.metadata.lastUserInput =
-        userMessages[userMessages.length - 1].content.slice(0, 100);
+        userEvents[userEvents.length - 1].content.slice(0, 100);
     }
 
     await this.save(conversationId, conversation);
   }
 
   /**
-   * 获取历史消息
+   * 获取历史事件
    */
-  async getHistory(conversationId: string): Promise<StoredMessage[]> {
+  async getHistory(conversationId: string): Promise<ConversationEvent[]> {
     const conversation = await this.load(conversationId);
-    return conversation?.messages || [];
+    return conversation?.events || [];
   }
 
   /**

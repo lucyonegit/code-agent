@@ -131,6 +131,7 @@ export interface PlanUpdateEvent extends BaseEvent {
  */
 export interface ArtifactEvent extends BaseEvent {
   type: 'artifact_event';
+  conversationId: string;
   artifacts: ArtifactInfo[];
   mode: 'react' | 'plan';
 }

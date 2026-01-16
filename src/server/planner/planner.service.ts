@@ -118,6 +118,7 @@ export class PlannerService {
     if (artifacts.length > 0) {
       const artifactEvent: ArtifactEvent = {
         id: `artifact_${Date.now()}`,
+        conversationId,
         type: 'artifact_event',
         artifacts,
         mode: 'plan',

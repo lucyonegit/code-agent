@@ -297,6 +297,22 @@ export interface ReActConfig {
 
   /** 自定义用户消息模板 */
   userMessageTemplate?: (input: string, toolDescriptions: string, context?: string) => string;
+
+  // ============================================================================
+  // 上下文管理配置
+  // ============================================================================
+
+  /** 最大上下文 Token 数。默认：100000 */
+  maxContextTokens?: number;
+
+  /** 是否启用工具结果压缩。默认：true */
+  enableCompression?: boolean;
+
+  /** 工具结果最大长度（字符数）。默认：3000 */
+  maxToolResultLength?: number;
+
+  /** 流式输出延时（毫秒）。默认：30，设为 0 禁用 */
+  streamDelayMs?: number;
 }
 
 /**

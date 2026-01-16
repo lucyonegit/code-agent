@@ -5,6 +5,7 @@
 import { ToolMessage } from '@langchain/core/messages';
 import { type Tool, type ReActInput } from '../../types/index.js';
 import { type ReActLogger } from '../ReActLogger.js';
+import { type ContextManager } from './context-manager.js';
 
 type ToolExecutionResult =
   | { type: 'final_answer'; answer: string }
@@ -14,7 +15,8 @@ export class ToolHandler {
   constructor(
     private tools: Tool[],
     private logger: ReActLogger,
-    private onMessage?: ReActInput['onMessage']
+    private onMessage?: ReActInput['onMessage'],
+    private contextManager?: ContextManager
   ) { }
 
   /**
@@ -106,7 +108,21 @@ export class ToolHandler {
         this.logger.info(`🔧 执行工具: ${toolCall.name}`, { toolCallId });
         this.logger.debug('📤 工具参数', { args: toolCall.args });
         tool_result = await tool.execute(toolCall.args);
-        observation = `[工具 ${toolCall.name} 调用成功]\n工具执行结果：${tool_result}`;
+
+        // 如果启用了上下文管理器，压缩工具结果
+        let compressedResult = tool_result;
+        if (this.contextManager && typeof tool_result === 'string') {
+          compressedResult = this.contextManager.compressToolResult(toolCall.name, tool_result);
+          if (compressedResult.length < tool_result.length) {
+            this.logger.debug('🗜️ 工具结果已压缩', {
+              toolName: toolCall.name,
+              originalLength: tool_result.length,
+              compressedLength: compressedResult.length,
+            });
+          }
+        }
+
+        observation = `[工具 ${toolCall.name} 调用成功]\n工具执行结果：${compressedResult}`;
         this.logger.debug('📥 工具结果', {
           toolName: toolCall.name,
           resultPreview:

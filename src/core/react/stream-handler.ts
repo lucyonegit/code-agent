@@ -12,6 +12,7 @@ import {
 } from '../utils/streamHelper.js';
 import { type ReActInput } from '../../types/index.js';
 import { type ReActLogger } from '../ReActLogger.js';
+import { DEFAULT_STREAM_DELAY_MS } from './constants.js';
 
 interface StreamResult {
   content: string;
@@ -19,11 +20,29 @@ interface StreamResult {
   message: AIMessage;
 }
 
+/**
+ * StreamHandler 配置
+ */
+interface StreamHandlerConfig {
+  /** 最终答案工具名称 */
+  finalAnswerToolName: string;
+  /** 流式延时（毫秒）*/
+  streamDelayMs: number;
+}
+
 export class StreamHandler {
+  private config: StreamHandlerConfig;
+
   constructor(
     private logger: ReActLogger,
-    private onMessage?: ReActInput['onMessage']
-  ) { }
+    private onMessage?: ReActInput['onMessage'],
+    config?: Partial<StreamHandlerConfig>
+  ) {
+    this.config = {
+      finalAnswerToolName: config?.finalAnswerToolName ?? 'give_final_answer',
+      streamDelayMs: config?.streamDelayMs ?? DEFAULT_STREAM_DELAY_MS,
+    };
+  }
 
   /**
    * 读取流并返回累积结果
@@ -61,8 +80,10 @@ export class StreamHandler {
             timestamp: Date.now(),
           });
 
-          // 人工延时：模拟流式效果（因 LiteLLM 代理批量返回 chunks）
-          await this.delay(30);
+          // 可配置延时：模拟流式效果（因 LiteLLM 代理批量返回 chunks）
+          if (this.config.streamDelayMs > 0) {
+            await this.delay(this.config.streamDelayMs);
+          }
         }
       }
 
@@ -76,22 +97,24 @@ export class StreamHandler {
         );
 
         // 检查是否正在调用 give_final_answer 工具，如果是则流式输出
-        const finalAnswerCall = accumulatedToolCalls.find(tc => tc.name === 'give_final_answer');
+        const finalAnswerCall = accumulatedToolCalls.find(tc => tc.name === this.config.finalAnswerToolName);
         if (finalAnswerCall) {
           // 生成或复用 answerId
           if (!currentFinalAnswerId) {
             currentFinalAnswerId = `final_${Date.now()}`;
             previousAnswerLength = 0;
-            console.log('[StreamHandler] 🔍 开始流式输出 give_final_answer, answerId:', currentFinalAnswerId);
+            this.logger.debug('🔍 开始流式输出 final_answer', { answerId: currentFinalAnswerId });
           }
 
           // 提取当前完整的 answer 内容
           const currentAnswer = this.extractAnswerContent(finalAnswerCall.args);
 
           // 调试日志
-          console.log('[StreamHandler] 📦 args 长度:', finalAnswerCall.args.length,
-            '| answer 长度:', currentAnswer.length,
-            '| 上次长度:', previousAnswerLength);
+          this.logger.trace('📦 final_answer 流式进度', {
+            argsLength: finalAnswerCall.args.length,
+            answerLength: currentAnswer.length,
+            previousLength: previousAnswerLength,
+          });
 
           // 只发送增量部分
           if (currentAnswer.length > previousAnswerLength) {
@@ -99,7 +122,7 @@ export class StreamHandler {
             previousAnswerLength = currentAnswer.length;
 
             if (newChunk) {
-              console.log('[StreamHandler] ✅ 发送 chunk:', newChunk.slice(0, 50) + (newChunk.length > 50 ? '...' : ''));
+              this.logger.trace('✅ 发送 final_answer chunk', { chunkLength: newChunk.length });
               await this.emitEvent({
                 type: 'final_answer_stream',
                 answerId: currentFinalAnswerId,

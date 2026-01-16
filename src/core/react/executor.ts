@@ -20,10 +20,14 @@ import {
   defaultFinalAnswerTool,
   defaultUserMessageTemplate,
   FINAL_ANSWER_PROMPT_SUFFIX,
+  DEFAULT_MAX_CONTEXT_TOKENS,
+  DEFAULT_MAX_TOOL_RESULT_LENGTH,
+  DEFAULT_STREAM_DELAY_MS,
 } from './constants.js';
 import { formatToolDescriptions } from './utils.js';
 import { ToolHandler } from './tool-handler.js';
 import { StreamHandler } from './stream-handler.js';
+import { ContextManager } from './context-manager.js';
 
 import { join } from 'path';
 
@@ -39,9 +43,15 @@ export class ReActExecutor {
     baseUrl?: string;
     userMessageTemplate: (input: string, toolDescriptions: string, context?: string) => string;
     logLevel: LogLevel;
+    // 上下文管理配置
+    maxContextTokens: number;
+    enableCompression: boolean;
+    maxToolResultLength: number;
+    streamDelayMs: number;
   };
 
   private logger: ReActLogger;
+  private contextManager: ContextManager;
 
   constructor(config: ReActConfig) {
     const logLevel = (config.logLevel ?? LogLevel.INFO) as LogLevel;
@@ -61,7 +71,20 @@ export class ReActExecutor {
       baseUrl: config.baseUrl,
       userMessageTemplate: config.userMessageTemplate ?? defaultUserMessageTemplate,
       logLevel,
+      // 上下文管理配置
+      maxContextTokens: config.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS,
+      enableCompression: config.enableCompression ?? true,
+      maxToolResultLength: config.maxToolResultLength ?? DEFAULT_MAX_TOOL_RESULT_LENGTH,
+      streamDelayMs: config.streamDelayMs ?? DEFAULT_STREAM_DELAY_MS,
     };
+
+    // 初始化上下文管理器
+    this.contextManager = new ContextManager({
+      maxContextTokens: this.config.maxContextTokens,
+      enableCompression: this.config.enableCompression,
+      maxToolResultLength: this.config.maxToolResultLength,
+      logger: this.logger,
+    });
 
     this.logger.debug('🔧 ReActExecutor 初始化', {
       model: this.config.model,
@@ -69,6 +92,8 @@ export class ReActExecutor {
       maxIterations: this.config.maxIterations,
       streaming: this.config.streaming,
       logLevel: LogLevel[logLevel],
+      maxContextTokens: this.config.maxContextTokens,
+      enableCompression: this.config.enableCompression,
     });
   }
 
@@ -118,8 +143,7 @@ export class ReActExecutor {
     const userMessage = this.config.userMessageTemplate(userInput, toolDescriptions, context);
     messages.push(new HumanMessage(userMessage));
 
-    // 跟踪迭代历史和计数
-    const iterationHistory: string[] = [];
+    // 跟踪迭代计数
     let completedIterations = 0;
 
     this.logger.separator();
@@ -131,9 +155,12 @@ export class ReActExecutor {
       toolCount: tools.length,
     });
 
-    // 初始化 Handler
-    const toolHandler = new ToolHandler(allTools, this.logger, onMessage);
-    const streamHandler = new StreamHandler(this.logger, onMessage);
+    // 初始化 Handler（传入 ContextManager 用于结果压缩）
+    const toolHandler = new ToolHandler(allTools, this.logger, onMessage, this.contextManager);
+    const streamHandler = new StreamHandler(this.logger, onMessage, {
+      finalAnswerToolName: defaultFinalAnswerTool.name,
+      streamDelayMs: this.config.streamDelayMs,
+    });
 
     // 主 ReAct 循环
     for (let iteration = 1; iteration <= this.config.maxIterations; iteration++) {
@@ -148,6 +175,14 @@ export class ReActExecutor {
       try {
         let responseContent = '';
         let toolCalls: Array<{ id?: string; name: string; args: Record<string, any> }> = [];
+
+        // 步骤 0: 截断上下文以适应 Token 预算（每次迭代前检查）
+        const truncatedMessages = this.contextManager.truncateMessages(messages);
+        if (truncatedMessages.length < messages.length) {
+          // 替换为截断后的消息（保持引用一致性）
+          messages.length = 0;
+          messages.push(...truncatedMessages);
+        }
 
         // 步骤 1: 获取 LLM 响应（流式或非流式）
         if (this.config.streaming) {
@@ -187,11 +222,6 @@ export class ReActExecutor {
           messages.push(response);
         }
 
-        // 记录思考过程到历史
-        if (responseContent) {
-          iterationHistory.push(responseContent);
-        }
-
         // 步骤 2: 处理工具调用（统一逻辑）
         if (toolCalls.length > 0) {
           // 调试：打印解析后的工具调用
@@ -227,7 +257,7 @@ export class ReActExecutor {
             return result.answer;
           } else if (result.type === 'continue') {
             messages.push(...result.messages);
-            iterationHistory.push(...result.historyItems);
+            // 工具结果已添加到 messages，不再单独跟踪 iterationHistory
           }
         } else {
           // 没有工具调用 - 继续下一轮迭代
@@ -270,7 +300,16 @@ export class ReActExecutor {
       maxIterations: this.config.maxIterations,
       totalDuration: `${totalDuration}ms`,
     });
-    const fallbackAnswer = `已达到最大迭代次数(${this.config.maxIterations})。\n\n${iterationHistory.join('\n\n')} `;
+
+    // 从 messages 中提取最近的 AI 消息作为 fallback
+    const aiMessages = messages.filter(m => m instanceof AIMessage);
+    const lastAIContent = aiMessages.length > 0
+      ? (typeof aiMessages[aiMessages.length - 1].content === 'string'
+        ? aiMessages[aiMessages.length - 1].content
+        : '')
+      : '';
+
+    const fallbackAnswer = `已达到最大迭代次数(${this.config.maxIterations})。\n\n${lastAIContent}`;
     await this.emitEvent(onMessage, {
       type: 'final_result',
       content: fallbackAnswer,

@@ -81,3 +81,19 @@ export const defaultUserMessageTemplate = (
   }
   return message;
 };
+
+// ============================================================================
+// 上下文管理配置常量
+// ============================================================================
+
+/** 默认最大上下文 Token 数（基于 Claude 3.5 Sonnet 200k 窗口，保守估计） */
+export const DEFAULT_MAX_CONTEXT_TOKENS = 100000;
+
+/** 默认工具结果最大长度（字符数） */
+export const DEFAULT_MAX_TOOL_RESULT_LENGTH = 3000;
+
+/** 默认流式输出延时（毫秒） */
+export const DEFAULT_STREAM_DELAY_MS = 30;
+
+/** Token 估算比率（每个 Token 约等于 4 个字符，中文约 2 个字符） */
+export const TOKEN_ESTIMATE_RATIO = 2.5;

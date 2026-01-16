@@ -230,6 +230,7 @@ export class ReactConversationManager {
   async listArtifacts(conversationId: string): Promise<{
     name: string;
     path: string;
+    type: 'md' | 'html' | 'txt' | 'json' | 'other';
     size: number;
   }[]> {
     const artifactsPath = this.getArtifactsPath(conversationId);
@@ -241,9 +242,12 @@ export class ReactConversationManager {
     return files.map(file => {
       const filePath = join(artifactsPath, file);
       const stat = statSync(filePath);
+      const ext = file.split('.').pop()?.toLowerCase() || '';
+      const type = (['md', 'html', 'txt', 'json'].includes(ext) ? ext : 'other') as 'md' | 'html' | 'txt' | 'json' | 'other';
       return {
         name: file,
-        path: filePath,
+        path: file,
+        type,
         size: stat.size,
       };
     });

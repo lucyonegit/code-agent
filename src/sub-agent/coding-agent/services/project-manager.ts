@@ -17,7 +17,7 @@ import type {
   WebContainerTree,
   WebContainerFile,
   WebContainerDirectory,
-} from '../utils/project-merger';
+} from '../../types';
 import { getViteTemplate, type TemplateConfig } from './template-generator';
 
 /**

@@ -6,7 +6,7 @@ import { ToolMessage } from '@langchain/core/messages';
 import { type Tool, type ReActInput } from '../../types/index.js';
 import { type ReActLogger } from '../ReActLogger.js';
 
-export type ToolExecutionResult =
+type ToolExecutionResult =
   | { type: 'final_answer'; answer: string }
   | { type: 'continue'; messages: ToolMessage[]; historyItems: string[] };
 

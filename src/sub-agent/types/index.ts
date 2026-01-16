@@ -4,6 +4,30 @@
 
 import { z } from 'zod';
 
+// ============================================================================
+// WebContainer 类型定义
+// ============================================================================
+
+export interface WebContainerFile {
+  file: {
+    contents: string;
+  };
+}
+
+export interface WebContainerDirectory {
+  directory: {
+    [key: string]: WebContainerFile | WebContainerDirectory;
+  };
+}
+
+export type WebContainerTree = {
+  [key: string]: WebContainerFile | WebContainerDirectory;
+};
+
+// ============================================================================
+// 工具类型定义
+// ============================================================================
+
 /**
  * 工具参数定义
  */

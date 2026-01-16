@@ -4,7 +4,7 @@
 
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import type { WebContainerTree, WebContainerFile } from '../../utils/project-merger';
+import type { WebContainerTree, WebContainerFile } from '../../../types';
 
 /**
  * 处理 NPM 依赖变更（添加和删除）

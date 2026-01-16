@@ -372,7 +372,7 @@ export class ReActLogger {
 /**
  * 从字符串解析日志级别
  */
-export function parseLogLevel(levelStr: string): LogLevel {
+function parseLogLevel(levelStr: string): LogLevel {
   const normalized = levelStr.toUpperCase();
   switch (normalized) {
     case 'SILENT':

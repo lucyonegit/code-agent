@@ -46,9 +46,9 @@ const PlanRefinementSchema = z.object({
 type PlanRefinement = z.infer<typeof PlanRefinementSchema>;
 
 /**
- * 默认规划器系统提示词（导出供外部使用）
+ * 默认规划器系统提示词
  */
-export const DEFAULT_PLANNER_PROMPT = `你是一个战略规划 AI。你的工作是将复杂目标分解为可执行的步骤。
+const DEFAULT_PLANNER_PROMPT = `你是一个战略规划 AI。你的工作是将复杂目标分解为可执行的步骤。
 
 对于每个目标，创建一个包含以下内容的计划：
 1. 清晰、具体的步骤，可以独立执行
@@ -63,9 +63,9 @@ export const DEFAULT_PLANNER_PROMPT = `你是一个战略规划 AI。你的工�
 保持步骤专注且可实现。每个步骤应该能够被拥有指定工具的 AI agent 完成。`;
 
 /**
- * 默认重规划系统提示词（导出供外部使用）
+ * 默认重规划系统提示词
  */
-export const DEFAULT_REFINE_PROMPT = `你是一个战略规划 AI。根据已完成步骤的执行结果，决定剩余计划是否需要调整。
+const DEFAULT_REFINE_PROMPT = `你是一个战略规划 AI。根据已完成步骤的执行结果，决定剩余计划是否需要调整。
 
 考虑：
 1. 步骤是否产生了预期结果？
@@ -78,20 +78,20 @@ export const DEFAULT_REFINE_PROMPT = `你是一个战略规划 AI。根据已完
 - updatedSteps:（如果重规划）更新后的剩余步骤列表`;
 
 /**
- * 默认汇总系统提示词（导出供外部使用）
+ * 默认汇总系统提示词
  */
-export const DEFAULT_SUMMARY_PROMPT = `你是一个有帮助的助手。将已完成计划的结果汇总为给用户的清晰、全面的回复。`;
+const DEFAULT_SUMMARY_PROMPT = `你是一个有帮助的助手。将已完成计划的结果汇总为给用户的清晰、全面的回复。`;
 
 /**
  * 默认计划生成消息模板
  */
-export const defaultPlanMessageTemplate = (goal: string, toolDescriptions: string): string =>
+const defaultPlanMessageTemplate = (goal: string, toolDescriptions: string): string =>
   `目标: ${goal}\n\n可用工具:\n${toolDescriptions}\n\n创建一个分步计划来实现这个目标。你必须调用 generate_plan 工具来返回你的计划。`;
 
 /**
  * 默认重规划消息模板
  */
-export const defaultRefineMessageTemplate = (
+const defaultRefineMessageTemplate = (
   plan: Plan,
   latestResult: string,
   tools: Tool[]
@@ -117,7 +117,7 @@ ${pendingSteps.map(s => `- ${s.id}: ${s.description}`).join('\n')}
 /**
  * 默认汇总消息模板
  */
-export const defaultSummaryMessageTemplate = (plan: Plan): string => {
+const defaultSummaryMessageTemplate = (plan: Plan): string => {
   const stepSummaries = plan.steps
     .filter(s => s.status === 'done')
     .map(s => `步骤 ${s.id}: ${s.description}\n结果: ${s.result}`)

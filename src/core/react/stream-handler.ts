@@ -13,7 +13,7 @@ import {
 import { type ReActInput } from '../../types/index.js';
 import { type ReActLogger } from '../ReActLogger.js';
 
-export interface StreamResult {
+interface StreamResult {
   content: string;
   toolCalls: Array<{ id?: string; name: string; args: Record<string, any> }>;
   message: AIMessage;

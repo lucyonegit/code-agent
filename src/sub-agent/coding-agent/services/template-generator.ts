@@ -11,7 +11,7 @@ import type {
   WebContainerTree,
   WebContainerFile,
   WebContainerDirectory,
-} from '../utils/project-merger';
+} from '../../types';
 import { ENHANCED_INDEX_CSS, ENHANCED_APP_CSS } from './styles';
 
 export interface TemplateConfig {

@@ -148,7 +148,7 @@ export function createFsCodeGenTool(
         logLevel: LogLevel.DEBUG,
       });
 
-      // 对话收集器
+      // 会话持久化存储
       const collector = new ConversationCollector();
 
       // 添加初始需求描述

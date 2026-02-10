@@ -3,7 +3,7 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import { PlannerExecutor } from '../../core/PlannerExecutor';
+import { PlannerExecutor } from '../../core/planner/index.js';
 import {
   PlannerConversationManager,
   plannerConversationManager,

@@ -7,7 +7,7 @@
 export { ReActExecutor } from './core/react/index.js';
 
 export { ToolRegistry, toolToLangChain, toolsToLangChain } from './core/ToolRegistry.js';
-export { PlannerExecutor } from './core/PlannerExecutor.js';
+export { PlannerExecutor } from './core/planner/index.js';
 
 // 类型
 export type {

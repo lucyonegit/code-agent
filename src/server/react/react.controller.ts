@@ -42,7 +42,6 @@ export class ReactController {
       const {
         input,
         conversationId = `conv_${Date.now()}`,
-        tools: toolNames = ['get_weather', 'calculator', 'web_search'],
       } = dto;
 
       if (!input) {
@@ -57,7 +56,6 @@ export class ReactController {
       const result = await this.reactService.run(
         conversationId,
         input,
-        toolNames,
         (event) => {
           sendSSE(event.type, event);
         }

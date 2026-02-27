@@ -29,11 +29,11 @@ export class ReactService {
   async run(
     conversationId: string,
     input: string,
-    toolNames: string[],
     onMessage: (event: ReActEvent) => void
   ) {
-    // 获取请求的工具
-    const tools: Tool[] = await this.toolsService.getToolsByNames(toolNames, {
+    // 获取所有可用工具
+    const allToolNames = this.toolsService.getToolsList().map(t => t.name);
+    const tools: Tool[] = await this.toolsService.getToolsByNames(allToolNames, {
       mode: 'react',
       conversationId,
     });

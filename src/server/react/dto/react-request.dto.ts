@@ -2,7 +2,7 @@
  * ReAct 请求 DTO
  */
 
-import { IsString, IsArray, IsOptional } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 
 export class ReactRequestDto {
   @IsString()
@@ -11,8 +11,4 @@ export class ReactRequestDto {
   @IsString()
   @IsOptional()
   conversationId?: string;
-
-  @IsArray()
-  @IsOptional()
-  tools?: string[];
 }

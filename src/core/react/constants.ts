@@ -95,5 +95,11 @@ export const DEFAULT_MAX_TOOL_RESULT_LENGTH = 3000;
 /** 默认流式输出延时（毫秒） */
 export const DEFAULT_STREAM_DELAY_MS = 30;
 
-/** Token 估算比率（每个 Token 约等于 4 个字符，中文约 2 个字符） */
-export const TOKEN_ESTIMATE_RATIO = 2.5;
+/** CJK 字符 Token 估算比率（中文等宽字符约 1 字 = 2 token） */
+export const CJK_TOKEN_RATIO = 2;
+
+/** ASCII 字符 Token 估算比率（英文/代码约 4 字符 = 1 token） */
+export const ASCII_TOKEN_RATIO = 0.25;
+
+/** 每条消息的结构开销 Token 数（role, name, metadata 等） */
+export const MESSAGE_OVERHEAD_TOKENS = 4;

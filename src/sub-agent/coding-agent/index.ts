@@ -13,6 +13,11 @@ import { runFixedWorkflow, runIncrementalWorkflow } from './workflows';
 import { ReActExecutor } from '../../core/react/executor';
 import { classifyIntent, type IntentType } from './services/intent-classifier';
 import {
+  analyzeRequirement,
+  enhanceRequirement,
+} from './services/requirement-clarifier';
+import { agentPauseController } from '../../core/agent-pause';
+import {
   createGrepFilesTool,
   createReadFileLinesTool,
   createListSymbolsTool,
@@ -70,6 +75,50 @@ export class CodingAgent {
       return await this.handleSimpleQuery(requirement, projectId, llmConfig, onProgress);
     }
 
+    // === 步骤2.5: 需求澄清 ===
+    let finalRequirement = requirement;
+    if (!projectId) {
+      // 仅在新项目（非增量修改）时进行需求澄清
+      console.log('[CodingAgent] 开始需求分析...');
+      const clarifyResult = await analyzeRequirement(requirement, llmConfig);
+      console.log('[CodingAgent] 需求分析结果:', clarifyResult);
+
+      if (clarifyResult.needsClarification && clarifyResult.questions.length > 0) {
+        // 使用 core 层通用暂停机制，业务语义放在 payload 中
+        const pauseResult = await agentPauseController.pause(
+          {
+            type: 'clarification',
+            questions: clarifyResult.questions,
+            originalRequirement: requirement,
+          },
+          (event) => this.emitEvent(onProgress, event),
+          { timeoutMs: 5 * 60 * 1000 }
+        );
+
+        // 业务层解读恢复的 payload
+        const answers = (pauseResult.payload?.answers || {}) as Record<string, string>;
+
+        if (!pauseResult.timedOut && Object.keys(answers).length > 0) {
+          finalRequirement = await enhanceRequirement(
+            requirement,
+            answers,
+            clarifyResult.questions,
+            llmConfig
+          );
+          console.log(`[CodingAgent] 增强后的需求: ${finalRequirement}`);
+        } else {
+          console.log('[CodingAgent] 用户未回答或超时，使用原始需求继续');
+        }
+
+        // 通知前端恢复执行
+        await this.emitEvent(onProgress, {
+          type: 'agent_resume',
+          sessionId: pauseResult.sessionId,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
     // 存储中间结果
     const results = {
       bddFeatures: [] as BDDFeature[],
@@ -79,7 +128,7 @@ export class CodingAgent {
 
     try {
       // 发送友好的开场提示
-      const greeting = await this.generateGreeting(requirement);
+      const greeting = await this.generateGreeting(finalRequirement);
       await this.emitEvent(onProgress, {
         type: 'normal_message',
         messageId: `greeting_${Date.now()}`,
@@ -91,7 +140,7 @@ export class CodingAgent {
       if (projectId) {
         await runIncrementalWorkflow(
           {
-            requirement,
+            requirement: finalRequirement,
             projectId,
             llmConfig,
             useRag: this.config.useRag,
@@ -103,7 +152,7 @@ export class CodingAgent {
         // 正常全流程 - 使用固定工作流
         await runFixedWorkflow(
           {
-            requirement,
+            requirement: finalRequirement,
             llmConfig,
             useRag: this.config.useRag,
             onProgress,

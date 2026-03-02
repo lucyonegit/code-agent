@@ -232,6 +232,25 @@ export interface StreamEvent {
 }
 
 /**
+ * Agent 暂停事件 — payload 对 core 不透明，由业务层自行解读
+ */
+export interface AgentPauseEvent {
+  type: 'agent_pause';
+  sessionId: string;
+  payload: Record<string, any>;
+  timestamp: number;
+}
+
+/**
+ * Agent 恢复事件
+ */
+export interface AgentResumeEvent {
+  type: 'agent_resume';
+  sessionId: string;
+  timestamp: number;
+}
+
+/**
  * 所有可能的 ReAct 事件的联合类型
  */
 export type ReActEvent =
@@ -241,7 +260,9 @@ export type ReActEvent =
   | FinalResultEvent
   | FinalAnswerStreamEvent
   | ErrorEvent
-  | NormalMessageEvent;
+  | NormalMessageEvent
+  | AgentPauseEvent
+  | AgentResumeEvent;
 /**
  * 处理 ReAct 事件的回调函数类型
  */

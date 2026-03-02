@@ -136,7 +136,7 @@ export interface CodingAgentInput {
   onProgress?: (event: CodingAgentEvent) => void | Promise<void>;
 }
 
-import type { Plan } from '../../types/index';
+import type { Plan, AgentPauseEvent, AgentResumeEvent } from '../../types/index';
 
 /**
  * 项目信息
@@ -214,6 +214,8 @@ export interface CodeGeneratedEvent {
  * CodingAgent 事件
  */
 export type CodingAgentEvent =
+  | AgentPauseEvent
+  | AgentResumeEvent
   | {
     type: 'phase_start';
     phase: 'bdd' | 'architect' | 'codegen';

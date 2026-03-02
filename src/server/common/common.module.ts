@@ -3,9 +3,11 @@
  */
 
 import { Module, Global } from '@nestjs/common';
+import { AgentPauseController } from './agent-pause.controller';
 
 @Global()
 @Module({
+  controllers: [AgentPauseController],
   providers: [],
   exports: [],
 })

@@ -88,27 +88,15 @@ export function toLangChainToolCalls(accumulated: AccumulatedToolCall[]): Array<
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
             args = parsed;
             parseSuccess = true;
-            if (Object.keys(args).length > 0) {
-              console.log(
-                `[StreamHelper] Parsed tool call ${tc.name}:`,
-                JSON.stringify(args).slice(0, 200)
-              );
-            } else {
-              console.log(`[StreamHelper] Tool call ${tc.name}: no parameters (empty object)`);
-            }
-          } else {
-            console.warn(`[StreamHelper] Skipping tool call ${tc.name}: invalid args type (not object)`);
           }
+          // 非对象类型的解析结果静默跳过
         } else {
           // 没有参数的工具调用，使用空对象
           args = {};
           parseSuccess = true;
-          console.log(`[StreamHelper] Tool call ${tc.name}: no parameters provided, using empty object`);
         }
-      } catch (e) {
-        console.error(`[StreamHelper] Tool call args parse error for ${tc.name}:`);
-        console.error(`  Raw args string: "${tc.args}"`);
-        console.error(`  Error: ${e instanceof Error ? e.message : String(e)}`);
+      } catch {
+        // JSON 解析失败，parseSuccess 保持 false，该工具调用将被过滤
       }
 
       // 返回解析结果，如果失败则标记为 null

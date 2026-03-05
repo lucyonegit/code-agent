@@ -10,6 +10,7 @@ import { ReActLogger, LogLevel } from '../ReActLogger.js';
 import {
   type ReActConfig,
   type ReActInput,
+  type ReActEvent,
   type Tool,
   type LLMProvider,
 } from '../../types/index.js';
@@ -24,7 +25,7 @@ import {
   DEFAULT_MAX_TOOL_RESULT_LENGTH,
   DEFAULT_STREAM_DELAY_MS,
 } from './constants.js';
-import { formatToolDescriptions } from './utils.js';
+import { formatToolDescriptionsCached } from './utils.js';
 import { ToolHandler } from './tool-handler.js';
 import { StreamHandler } from './stream-handler.js';
 import { ContextManager } from './context-manager.js';
@@ -52,6 +53,10 @@ export class ReActExecutor {
 
   private logger: ReActLogger;
   private contextManager: ContextManager;
+
+  /** 缓存的 LLM 实例（配置不变时复用） */
+  private cachedLLM: ReturnType<typeof createLLM> | null = null;
+  private cachedLLMConfigHash: string = '';
 
   constructor(config: ReActConfig) {
     const logLevel = (config.logLevel ?? LogLevel.INFO) as LogLevel;
@@ -98,13 +103,10 @@ export class ReActExecutor {
   }
 
   /**
-   * 执行 ReAct 循环
+   * 获取或创建 LLM 实例（配置不变时复用）
    */
-  async run(input: ReActInput): Promise<string> {
-    const { input: userInput, context, tools, onMessage, initialMessages } = input;
-    const startTime = Date.now();
-
-    const llm = createLLM({
+  private getOrCreateLLM(): ReturnType<typeof createLLM> {
+    const configHash = JSON.stringify({
       model: this.config.model,
       provider: this.config.provider,
       temperature: this.config.temperature,
@@ -112,6 +114,33 @@ export class ReActExecutor {
       baseUrl: this.config.baseUrl,
       streaming: this.config.streaming,
     });
+
+    if (this.cachedLLM && this.cachedLLMConfigHash === configHash) {
+      this.logger.debug('♻️ 复用已有 LLM 实例');
+      return this.cachedLLM;
+    }
+
+    this.cachedLLM = createLLM({
+      model: this.config.model,
+      provider: this.config.provider,
+      temperature: this.config.temperature,
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.baseUrl,
+      streaming: this.config.streaming,
+    });
+    this.cachedLLMConfigHash = configHash;
+
+    return this.cachedLLM;
+  }
+
+  /**
+   * 执行 ReAct 循环
+   */
+  async run(input: ReActInput): Promise<string> {
+    const { input: userInput, context, tools, onMessage, initialMessages } = input;
+    const startTime = Date.now();
+
+    const llm = this.getOrCreateLLM();
 
     // 最终答案工具始终使用内部默认实现
     const allTools = [...tools, defaultFinalAnswerTool];
@@ -122,8 +151,8 @@ export class ReActExecutor {
       tool_choice: 'auto',
     });
 
-    // 构建提示词的工具描述
-    const toolDescriptions = formatToolDescriptions(tools);
+    // 构建提示词的工具描述（带缓存）
+    const toolDescriptions = formatToolDescriptionsCached(tools);
 
     // 构建系统提示词（始终添加最终答案工具使用说明）
     let systemPrompt = this.config.systemPrompt;
@@ -169,8 +198,8 @@ export class ReActExecutor {
         iteration,
         messageCount: messages.length,
       });
-      // 为本次迭代生成唯一的 thoughtId
-      const iterationId = `thought_${Date.now()}_${iteration} `;
+      // 为本次迭代生成唯一的 thoughtId（修复尾部空格）
+      const iterationId = `thought_${Date.now()}_${iteration}`;
 
       try {
         let responseContent = '';
@@ -245,23 +274,33 @@ export class ReActExecutor {
             this.logger.separator();
 
             const finalEvent = {
-              type: 'final_result',
+              type: 'final_result' as const,
               content: result.answer,
               totalDuration,
               iterationCount: iteration,
               timestamp: Date.now(),
             };
-            // ToolHandler handles message_sync, but final_result depends on executor context (duration/iteration)
-            // So we emit final_result here. ToolHandler's handleFinalAnswer emitted the message_sync.
             await this.emitEvent(onMessage, finalEvent);
             return result.answer;
           } else if (result.type === 'continue') {
             messages.push(...result.messages);
-            // 工具结果已添加到 messages，不再单独跟踪 iterationHistory
           }
         } else {
-          // 没有工具调用 - 继续下一轮迭代
+          // 没有工具调用 - 检测空输出以防无限循环
           this.logger.debug('🔄 迭代完成（无工具调用）', { iteration });
+
+          const lastMsg = messages[messages.length - 1];
+          const isAI = lastMsg instanceof AIMessage;
+          const hasContent = typeof lastMsg.content === 'string' && lastMsg.content.length > 0;
+          const hasTC = isAI && !!(lastMsg as AIMessage).tool_calls?.length;
+
+          if (!hasContent && !hasTC && !this.config.streaming) {
+            this.logger.debug('🛑 空输出检测，跳出循环', {
+              iteration: completedIterations,
+              reason: '连续空输出且无工具调用',
+            });
+            break;
+          }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : '未知错误';
@@ -271,26 +310,11 @@ export class ReActExecutor {
         });
         await this.emitEvent(onMessage, {
           type: 'error',
-          message: `第 ${iteration} 次迭代失败: ${errorMessage} `,
+          message: `第 ${iteration} 次迭代失败: ${errorMessage}`,
           timestamp: Date.now(),
         });
-        messages.push(new HumanMessage(`发生错误: ${errorMessage} \n请继续尝试。`));
-      }
-
-      // 防止无限循环：如果连续多次没有工具调用且输出为空
-      // Check last message
-      const lastMsg = messages[messages.length - 1];
-      const isAIMessage = lastMsg instanceof AIMessage;
-      const hasContent = typeof lastMsg.content === 'string' && lastMsg.content.length > 0;
-      const hasToolCalls = isAIMessage && !!(lastMsg as AIMessage).tool_calls?.length;
-
-      if (!hasContent && !hasToolCalls && !this.config.streaming) {
-        // Streaming handles emptiness differently/mostly chunks
-        this.logger.debug('🛑 空输出检测，跳出循环', {
-          iteration: completedIterations,
-          reason: '连续空输出且无工具调用',
-        });
-        break;
+        // 使用 SystemMessage 注入错误信息（而非 HumanMessage），避免混淆角色
+        messages.push(new SystemMessage(`[系统提示] 上一次迭代发生错误: ${errorMessage}\n请继续尝试完成任务。`));
       }
     }
 
@@ -323,7 +347,7 @@ export class ReActExecutor {
   /**
    * 发出事件 (Internal helper)
    */
-  private async emitEvent(handler: ReActInput['onMessage'], event: any): Promise<void> {
+  private async emitEvent(handler: ReActInput['onMessage'], event: ReActEvent): Promise<void> {
     this.logger.trace('📡 事件发射', {
       type: event.type,
       timestamp: event.timestamp,

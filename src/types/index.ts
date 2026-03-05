@@ -200,36 +200,7 @@ export interface ArtifactEvent {
   timestamp: number;
 }
 
-// ============================================================================
-// 向后兼容类型（保留旧接口别名）
-// ============================================================================
 
-/** @deprecated 使用 ToolCallEvent */
-export interface ActionEvent {
-  type: 'action';
-  toolName: string;
-  args: Record<string, any>;
-}
-
-/** @deprecated 使用 ToolCallResultEvent */
-export interface ObservationEvent {
-  type: 'observation';
-  content: string;
-}
-
-/** @deprecated 使用 FinalResultEvent */
-export interface FinalAnswerEvent {
-  type: 'final_answer';
-  content: string;
-}
-
-/** @deprecated 使用 ThoughtEvent */
-export interface StreamEvent {
-  type: 'stream';
-  thoughtId: string;
-  chunk: string;
-  isThought: boolean;
-}
 
 /**
  * Agent 暂停事件 — payload 对 core 不透明，由业务层自行解读

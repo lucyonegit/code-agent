@@ -9,7 +9,7 @@ import { type ContextManager } from './context-manager.js';
 
 type ToolExecutionResult =
   | { type: 'final_answer'; answer: string }
-  | { type: 'continue'; messages: ToolMessage[]; historyItems: string[] };
+  | { type: 'continue'; messages: ToolMessage[] };
 
 export class ToolHandler {
   constructor(
@@ -35,17 +35,27 @@ export class ToolHandler {
       }
     }
 
-    // 2. 执行普通工具
-    const messages: ToolMessage[] = [];
-    const historyItems: string[] = [];
+    // 2. 并行执行普通工具（多个工具调用之间通常无依赖关系）
+    const results = await Promise.allSettled(
+      toolCalls.map(call => this.executeTool(call))
+    );
 
-    for (const call of toolCalls) {
-      const result = await this.executeTool(call);
-      messages.push(result.message);
-      historyItems.push(result.historyItem);
+    const messages: ToolMessage[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        messages.push(result.value.message);
+      } else {
+        // Promise 被 reject（理论上 executeTool 内部已 catch，这是兜底）
+        const errorMsg = result.reason instanceof Error ? result.reason.message : '未知错误';
+        this.logger.error('工具并行执行异常', { error: errorMsg });
+        messages.push(new ToolMessage({
+          tool_call_id: `error_${Date.now()}`,
+          content: `工具执行异常: ${errorMsg}`,
+        }));
+      }
     }
 
-    return { type: 'continue', messages, historyItems };
+    return { type: 'continue', messages };
   }
 
   /**
@@ -71,9 +81,8 @@ export class ToolHandler {
     message: ToolMessage;
     result: any;
     success: boolean;
-    historyItem: string;
   }> {
-    const toolCallId = toolCall.id || `call_${Date.now()} `;
+    const toolCallId = toolCall.id || `call_${Date.now()}`;
     const toolStartTime = Date.now();
 
     // 发出 tool_call 事件
@@ -169,7 +178,6 @@ export class ToolHandler {
       }),
       result: tool_result,
       success,
-      historyItem: `动作: ${toolCall.name} \n观察: ${observation} `,
     };
   }
 

@@ -10,7 +10,7 @@ import {
   type AccumulatedToolCall,
   type ToolCallChunk,
 } from '../utils/streamHelper.js';
-import { type ReActInput } from '../../types/index.js';
+import { type ReActInput, type ReActEvent } from '../../types/index.js';
 import { type ReActLogger } from '../ReActLogger.js';
 import { DEFAULT_STREAM_DELAY_MS } from './constants.js';
 
@@ -191,7 +191,7 @@ export class StreamHandler {
     };
   }
 
-  private async emitEvent(event: any): Promise<void> {
+  private async emitEvent(event: ReActEvent): Promise<void> {
     if (this.onMessage) {
       await this.onMessage(event);
     }
@@ -207,7 +207,17 @@ export class StreamHandler {
    * 流式时会逐步收到: {"answer": " → {"answer": "Hello → {"answer": "Hello World"}
    */
   private extractAnswerContent(argsJson: string): string {
-    // 尝试匹配 "answer": "..." 模式
+    // 优先尝试 JSON.parse（完整 JSON 时更可靠）
+    try {
+      const parsed = JSON.parse(argsJson);
+      if (parsed && typeof parsed.answer === 'string') {
+        return parsed.answer;
+      }
+    } catch {
+      // 流式传输中 JSON 不完整，回退到正则匹配
+    }
+
+    // 正则回退：匹配 "answer": "..." 模式（处理流式不完整 JSON）
     const match = argsJson.match(/"answer"\s*:\s*"/);
     if (!match) {
       return '';

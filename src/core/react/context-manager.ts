@@ -42,8 +42,8 @@ export interface ContextManagerConfig {
 export interface CompressionStrategy {
   /** 策略名称 */
   name: string;
-  /** 判断是否匹配当前工具 */
-  match: (toolName: string) => boolean;
+  /** 判断是否匹配当前工具（toolName + 可选 returnType） */
+  match: (toolName: string, returnType?: string) => boolean;
   /** 执行压缩 */
   compress: (result: string, maxLength: number) => string;
   /** 该策略的最大长度（覆盖全局默认） */
@@ -77,7 +77,8 @@ interface MessageGroup {
  */
 const codeFileStrategy: CompressionStrategy = {
   name: 'code_file',
-  match: (toolName) => {
+  match: (toolName, returnType) => {
+    if (returnType === 'code') return true;
     const lower = toolName.toLowerCase();
     return lower.includes('read_file') || lower.includes('view_file') || lower.includes('read_code');
   },
@@ -395,11 +396,11 @@ export class ContextManager {
    */
   estimateTokens(text: string): number {
     if (!text) return 0;
-    let count = 0;
-    for (const char of text) {
-      count += char.charCodeAt(0) > 0x7F ? CJK_TOKEN_RATIO : ASCII_TOKEN_RATIO;
-    }
-    return Math.ceil(count);
+    // 使用正则一次性统计非 ASCII 字符数量，避免逐字符遍历
+    const nonAsciiMatches = text.match(/[^\x00-\x7F]/g);
+    const cjkCount = nonAsciiMatches ? nonAsciiMatches.length : 0;
+    const asciiCount = text.length - cjkCount;
+    return Math.ceil(cjkCount * CJK_TOKEN_RATIO + asciiCount * ASCII_TOKEN_RATIO);
   }
 
   /**
@@ -431,8 +432,25 @@ export class ContextManager {
    */
   truncateMessages(messages: BaseMessage[], reserveTokens: number = 4000): BaseMessage[] {
     const budget = this.config.maxContextTokens - reserveTokens;
-    const totalTokens = this.estimateMessagesTokens(messages);
+    // 一次性计算全部消息的 Token（后续不再重复计算）
+    // 先分离 SystemMessage
+    const systemMessages: BaseMessage[] = [];
+    const otherMessages: BaseMessage[] = [];
+    let systemTokens = 0;
+    let totalTokens = 0;
 
+    for (const m of messages) {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      const msgTokens = this.estimateTokens(content) + MESSAGE_OVERHEAD_TOKENS;
+      totalTokens += msgTokens;
+
+      if (m instanceof SystemMessage) {
+        systemMessages.push(m);
+        systemTokens += msgTokens;
+      } else {
+        otherMessages.push(m);
+      }
+    }
     // 如果在预算内，直接返回
     if (totalTokens <= budget) {
       return messages;
@@ -444,12 +462,6 @@ export class ContextManager {
       messageCount: messages.length,
     });
 
-    // 分离 SystemMessage 与其他消息
-    const systemMessages = messages.filter(m => m instanceof SystemMessage);
-    const otherMessages = messages.filter(m => !(m instanceof SystemMessage));
-
-    // 计算 SystemMessage 占用的 Token
-    const systemTokens = this.estimateMessagesTokens(systemMessages);
     const remainingBudget = budget - systemTokens;
 
     if (remainingBudget <= 0) {
@@ -566,20 +578,22 @@ export class ContextManager {
    * @param result 原始结果
    * @returns 压缩后的结果
    */
-  compressToolResult(toolName: string, result: string): string {
+  compressToolResult(toolName: string, result: string, returnType?: string): string {
     if (!this.config.enableCompression) {
       return result;
     }
 
     // 从策略注册表中找到第一个匹配的策略
-    const strategy = this.strategies.find(s => s.match(toolName));
+    const strategy = this.strategies.find(s => s.match(toolName, returnType));
     if (!strategy) {
       return result;
     }
 
-    const maxLength = strategy.maxLength ?? this.config.maxToolResultLength;
+    // 预留压缩元信息的空间（约 100 字符）
+    const metadataReserve = 100;
+    const maxLength = (strategy.maxLength ?? this.config.maxToolResultLength) - metadataReserve;
 
-    if (result.length <= maxLength) {
+    if (result.length <= maxLength + metadataReserve) {
       return result;
     }
 

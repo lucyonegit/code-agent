@@ -39,6 +39,7 @@ import {
   getToolsForStep,
   formatPlanHistory,
 } from './helpers.js';
+import { createSpan, endSpan, createLangfuseCallbackHandler } from '../langfuse.js';
 
 /**
  * PlannerExecutor - 实现 Planner + ReAct 双循环架构
@@ -59,6 +60,7 @@ export class PlannerExecutor {
     refineMessageTemplate: (plan: Plan, latestResult: string, tools: Tool[]) => string;
     summaryMessageTemplate: (plan: Plan) => string;
     executorConfig?: Partial<PlannerConfig['executorConfig']>;
+    langfuseTrace?: any;
   };
 
   constructor(config: PlannerConfig) {
@@ -77,6 +79,7 @@ export class PlannerExecutor {
       refineMessageTemplate: config.refineMessageTemplate ?? defaultRefineMessageTemplate,
       summaryMessageTemplate: config.summaryMessageTemplate ?? defaultSummaryMessageTemplate,
       executorConfig: config.executorConfig,
+      langfuseTrace: config.langfuseTrace,
     };
   }
 
@@ -86,9 +89,13 @@ export class PlannerExecutor {
   async run(input: PlannerInput): Promise<PlannerResult> {
     const { goal, tools, onMessage, onPlanUpdate, initialMessages } = input;
 
+    const plannerSpan = this.config.langfuseTrace
+      ? createSpan(this.config.langfuseTrace, { name: 'planner-loop', input: { goal } })
+      : null;
+
     try {
       // 步骤 1：生成初始计划
-      const plan = await this.generatePlan(goal, tools);
+      const plan = await this.generatePlan(goal, tools, plannerSpan);
 
       // 步骤 2：执行计划步骤
       let isFirstStep = true;
@@ -107,13 +114,17 @@ export class PlannerExecutor {
         const stepTools = getToolsForStep(currentStep, tools);
 
         // 生成并发送友好提示
-        const friendlyMessage = await this.generateFriendlyMessage(currentStep.description);
+        const friendlyMessage = await this.generateFriendlyMessage(currentStep.description, plannerSpan);
         await onMessage?.({
           type: 'normal_message',
           messageId: `step_hint_${currentStep.id}`,
           content: friendlyMessage,
           timestamp: Date.now(),
         });
+
+        const stepSpan = plannerSpan 
+          ? createSpan(plannerSpan, { name: `step-${currentStep.id}`, input: { description: currentStep.description } })
+          : null;
 
         // 为此步骤创建 ReActExecutor
         const executor = new ReActExecutor({
@@ -124,6 +135,7 @@ export class PlannerExecutor {
           baseUrl: this.config.baseUrl,
           streaming: true,
           ...this.config.executorConfig,
+          langfuseTrace: stepSpan,
         });
 
         console.log('ReAct Executor Running...');
@@ -141,6 +153,8 @@ export class PlannerExecutor {
         currentStep.result = stepResult;
         currentStep.status = 'done';
 
+        if (stepSpan) endSpan(stepSpan, { output: { result: stepResult } });
+
         // 确定此步骤使用的主要工具及其返回类型
         const mainTool = stepTools.length > 0 ? stepTools[0] : undefined;
 
@@ -155,11 +169,14 @@ export class PlannerExecutor {
       }
 
       // 生成最终响应
-      const response = await this.generateFinalResponse(plan);
+      const response = await this.generateFinalResponse(plan, plannerSpan);
+
+      if (plannerSpan) endSpan(plannerSpan, { output: { success: true, response } });
 
       return { success: true, response, plan };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
+      if (plannerSpan) endSpan(plannerSpan, { output: { error: errorMessage }, level: 'ERROR' });
       await onMessage?.({
         type: 'error',
         message: `规划器失败: ${errorMessage}`,
@@ -178,7 +195,9 @@ export class PlannerExecutor {
    * 为给定目标生成初始计划
    * 使用 tool call 方式实现结构化输出
    */
-  private async generatePlan(goal: string, tools: Tool[]): Promise<Plan> {
+  private async generatePlan(goal: string, tools: Tool[], parentSpan?: any): Promise<Plan> {
+    const span = parentSpan ? createSpan(parentSpan, { name: 'generate-plan' }) : null;
+
     const llm = createLLM({
       model: this.config.plannerModel,
       provider: this.config.provider,
@@ -200,10 +219,12 @@ export class PlannerExecutor {
 
     const toolDescriptions = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
 
+    const callbacks = span ? [createLangfuseCallbackHandler(span)] : undefined;
+
     const response = await llmWithTool.invoke([
       new SystemMessage(this.config.systemPrompt),
       new HumanMessage(this.config.planMessageTemplate(goal, toolDescriptions)),
-    ]);
+    ], { callbacks: callbacks as any });
 
     // 从 tool_calls 中提取计划数据
     if (!response.tool_calls || response.tool_calls.length === 0) {
@@ -217,7 +238,7 @@ export class PlannerExecutor {
 
     const planData = toolCall.args as z.infer<typeof PlanSchema>;
 
-    return {
+    const finalPlan = {
       goal: planData.goal,
       steps: planData.steps.map(step => ({
         id: step.id,
@@ -229,6 +250,9 @@ export class PlannerExecutor {
       reasoning: planData.reasoning,
       history: [],
     };
+
+    if (span) endSpan(span, { output: finalPlan });
+    return finalPlan;
   }
 
   /**
@@ -237,8 +261,11 @@ export class PlannerExecutor {
   private async refinePlan(
     plan: Plan,
     latestResult: string,
-    tools: Tool[]
+    tools: Tool[],
+    parentSpan?: any
   ): Promise<PlanRefinement> {
+    const span = parentSpan ? createSpan(parentSpan, { name: 'refine-plan' }) : null;
+
     const llm = createLLM({
       model: this.config.plannerModel,
       provider: this.config.provider,
@@ -249,18 +276,23 @@ export class PlannerExecutor {
 
     const prompt = this.config.refineMessageTemplate(plan, latestResult, tools);
 
+    const callbacks = span ? [createLangfuseCallbackHandler(span)] : undefined;
+
     const response = await structuredLLM.invoke([
       new SystemMessage(this.config.refinePrompt),
       new HumanMessage(prompt),
-    ]);
+    ], { callbacks: callbacks as any });
 
-    return response as PlanRefinement;
+    const refinement = response as PlanRefinement;
+    if (span) endSpan(span, { output: refinement });
+    return refinement;
   }
 
   /**
    * 生成汇总计划执行的最终响应
    */
-  private async generateFinalResponse(plan: Plan): Promise<string> {
+  private async generateFinalResponse(plan: Plan, parentSpan?: any): Promise<string> {
+    const span = parentSpan ? createSpan(parentSpan, { name: 'generate-final-response' }) : null;
     const llm = createLLM({
       model: this.config.plannerModel,
       provider: this.config.provider,
@@ -268,32 +300,41 @@ export class PlannerExecutor {
       baseUrl: this.config.baseUrl,
     });
 
+    const callbacks = span ? [createLangfuseCallbackHandler(span)] : undefined;
+
     const response = await llm.invoke([
       new SystemMessage(this.config.summaryPrompt),
       new HumanMessage(this.config.summaryMessageTemplate(plan)),
-    ]);
+    ], { callbacks: callbacks as any });
 
-    return response.content as string;
+    const content = response.content as string;
+    if (span) endSpan(span, { output: { content } });
+    return content;
   }
 
   /**
    * 生成友好的步骤提示消息
    */
-  private async generateFriendlyMessage(stepDescription: string): Promise<string> {
+  private async generateFriendlyMessage(stepDescription: string, parentSpan?: any): Promise<string> {
+    const span = parentSpan ? createSpan(parentSpan, { name: 'generate-friendly-message' }) : null;
     const llm = createLLM({
       model: this.config.plannerModel,
       provider: this.config.provider,
       apiKey: this.config.apiKey,
       baseUrl: this.config.baseUrl,
     });
+
+    const callbacks = span ? [createLangfuseCallbackHandler(span)] : undefined;
 
     const response = await llm.invoke([
       new SystemMessage(
         '你是一个友好的助手。根据给定的任务描述，生成一条简短的中文提示消息（15字以内），告诉用户你正在做什么。语气要轻松友好，可以适当使用emoji。只返回提示消息本身，不要有其他内容。'
       ),
       new HumanMessage(`任务: ${stepDescription}`),
-    ]);
+    ], { callbacks: callbacks as any });
 
-    return (response.content as string).trim();
+    const content = (response.content as string).trim();
+    if (span) endSpan(span, { output: { content } });
+    return content;
   }
 }

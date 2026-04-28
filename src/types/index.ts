@@ -290,6 +290,9 @@ export interface ReActConfig {
   /** 自定义用户消息模板 */
   userMessageTemplate?: (input: string, toolDescriptions: string, context?: string) => string;
 
+  /** Langfuse 追踪对象 */
+  langfuseTrace?: any;
+
   // ============================================================================
   // 上下文管理配置
   // ============================================================================
@@ -475,6 +478,9 @@ export interface PlannerConfig {
 
   /** 自定义执行器配置（允许完全控制 ReActExecutor 创建） */
   executorConfig?: Partial<ReActConfig>;
+
+  /** Langfuse 追踪对象 */
+  langfuseTrace?: any;
 }
 
 /**

@@ -51,9 +51,10 @@ export class StreamHandler {
   async readStream(
     llm: ReturnType<ChatOpenAI['bindTools']>,
     messages: BaseMessage[],
-    iterationId: string
+    iterationId: string,
+    callbacks?: any
   ): Promise<StreamResult> {
-    const stream = await llm.stream(messages);
+    const stream = await llm.stream(messages, { callbacks });
 
     // 累积内容和工具调用
     let accumulatedContent = '';

@@ -20,6 +20,7 @@ import {
   createListSymbolsTool,
 } from '../fs';
 import { LogLevel } from '../../../../core/ReActLogger';
+import { type LangfuseTrace } from '../../../../core/langfuse';
 import {
   INCREMENTAL_SYSTEM_PROMPT,
   buildIncrementalUserPrompt,
@@ -63,7 +64,8 @@ export interface IncrementalProjectContext {
 export function createIncrementalCodeGenTool(
   config: IncrementalLLMConfig,
   projectContext: IncrementalProjectContext,
-  onProgress?: IncrementalCodeGenProgressCallback
+  onProgress?: IncrementalCodeGenProgressCallback,
+  langfuseTrace?: LangfuseTrace
 ): Tool {
   const { projectId, existingFiles } = projectContext;
 
@@ -121,6 +123,7 @@ export function createIncrementalCodeGenTool(
         systemPrompt: INCREMENTAL_SYSTEM_PROMPT,
         streaming: true,
         logLevel: LogLevel.DEBUG,
+        langfuseTrace,
       });
 
       // 对话收集器

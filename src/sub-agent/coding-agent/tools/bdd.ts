@@ -8,6 +8,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createLLM } from '../../../core/BaseLLM';
 import { CODING_AGENT_PROMPTS } from '../config/prompt';
 import type { Tool, LLMProvider } from '../../../types/index';
+import { createLangfuseCallbackHandler, type LangfuseTrace, type LangfuseSpan } from '../../../core/langfuse';
 
 /**
  * BDD Feature Schema - 返回数组格式
@@ -49,7 +50,7 @@ export interface LLMConfig {
 /**
  * 创建 BDD 拆解工具
  */
-export function createBDDTool(config: LLMConfig): Tool {
+export function createBDDTool(config: LLMConfig, langfuseTrace?: LangfuseTrace | LangfuseSpan | null): Tool {
   return {
     name: 'decompose_to_bdd',
     description:
@@ -86,10 +87,13 @@ export function createBDDTool(config: LLMConfig): Tool {
         args.requirement
       );
 
+      const callbackHandler = createLangfuseCallbackHandler(langfuseTrace);
+      const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
+
       const response = await llmWithTool.invoke([
         new SystemMessage(CODING_AGENT_PROMPTS.SYSTEM_PERSONA),
         new HumanMessage(prompt),
-      ]);
+      ], { callbacks });
 
       if (response.tool_calls && response.tool_calls.length > 0) {
         const toolArgs = response.tool_calls[0].args as { features: unknown };

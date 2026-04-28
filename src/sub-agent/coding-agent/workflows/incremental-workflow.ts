@@ -5,6 +5,7 @@
 
 import { createIncrementalCodeGenTool } from '../tools/codegen';
 import { getProjectTree } from '../services/template-generator';
+import { createSpan, endSpan, type LangfuseTrace } from '../../../core/langfuse';
 import type {
   CodingAgentConfig,
   CodingAgentInput,
@@ -29,6 +30,7 @@ export interface IncrementalWorkflowContext {
   };
   useRag?: boolean;
   onProgress?: CodingAgentInput['onProgress'];
+  langfuseTrace?: LangfuseTrace;
 }
 
 /**
@@ -85,7 +87,7 @@ export async function runIncrementalWorkflow(
   context: IncrementalWorkflowContext,
   results: IncrementalWorkflowResult
 ): Promise<void> {
-  const { requirement, projectId, llmConfig, onProgress } = context;
+  const { requirement, projectId, llmConfig, onProgress, langfuseTrace } = context;
 
   await emitEvent(onProgress, {
     type: 'phase_start',
@@ -117,14 +119,18 @@ export async function runIncrementalWorkflow(
     },
     async event => {
       await emitEvent(onProgress, event as unknown as CodingAgentEvent);
-    }
+    },
+    langfuseTrace
   );
 
   console.log(`[IncrementalWorkflow] Using incremental code gen tool`);
   console.log(`[IncrementalWorkflow] Requirement: ${requirement}`);
 
+  const codegenSpan = createSpan(langfuseTrace ?? null, { name: 'codegen-incremental', input: { requirement, projectId, filesCount: projectFiles.length } });
+
   // 执行增量代码生成（只需传入 requirement）
   const rawResult = await incrementalTool.execute({ requirement });
+  endSpan(codegenSpan, { output: { success: true } });
 
   // 解析结果
   try {
@@ -152,6 +158,9 @@ export async function runIncrementalWorkflow(
       timestamp: Date.now(),
     });
   } catch (e) {
+    if (codegenSpan) {
+      endSpan(codegenSpan, { output: { error: '代码生成结果解析失败' }, level: 'ERROR' });
+    }
     console.error('[IncrementalWorkflow] Error parsing incremental result:', e);
     throw new Error('代码生成结果解析失败');
   }

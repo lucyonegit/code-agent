@@ -29,6 +29,7 @@ import { formatToolDescriptionsCached } from './utils.js';
 import { ToolHandler } from './tool-handler.js';
 import { StreamHandler } from './stream-handler.js';
 import { ContextManager } from './context-manager.js';
+import { createSpan, endSpan, createLangfuseCallbackHandler } from '../langfuse.js';
 
 import { join } from 'path';
 
@@ -44,6 +45,8 @@ export class ReActExecutor {
     baseUrl?: string;
     userMessageTemplate: (input: string, toolDescriptions: string, context?: string) => string;
     logLevel: LogLevel;
+    // Langfuse
+    langfuseTrace?: any;
     // 上下文管理配置
     maxContextTokens: number;
     enableCompression: boolean;
@@ -76,6 +79,7 @@ export class ReActExecutor {
       baseUrl: config.baseUrl,
       userMessageTemplate: config.userMessageTemplate ?? defaultUserMessageTemplate,
       logLevel,
+      langfuseTrace: config.langfuseTrace,
       // 上下文管理配置
       maxContextTokens: config.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS,
       enableCompression: config.enableCompression ?? true,
@@ -140,6 +144,10 @@ export class ReActExecutor {
     const { input: userInput, context, tools, onMessage, initialMessages } = input;
     const startTime = Date.now();
 
+    const reactLoopSpan = this.config.langfuseTrace 
+      ? createSpan(this.config.langfuseTrace, { name: 'react-loop', input: { userInput, context } })
+      : null;
+
     const llm = this.getOrCreateLLM();
 
     // 最终答案工具始终使用内部默认实现
@@ -201,6 +209,10 @@ export class ReActExecutor {
       // 为本次迭代生成唯一的 thoughtId（修复尾部空格）
       const iterationId = `thought_${Date.now()}_${iteration}`;
 
+      const iterSpan = reactLoopSpan 
+        ? createSpan(this.config.langfuseTrace, { name: `iteration-${iteration}` })
+        : null;
+
       try {
         let responseContent = '';
         let toolCalls: Array<{ id?: string; name: string; args: Record<string, any> }> = [];
@@ -213,16 +225,19 @@ export class ReActExecutor {
           messages.push(...truncatedMessages);
         }
 
+        const callbackHandler = iterSpan ? createLangfuseCallbackHandler(iterSpan) : undefined;
+        const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
+
         // 步骤 1: 获取 LLM 响应（流式或非流式）
         if (this.config.streaming) {
           // === 流式模式 ===
-          const result = await streamHandler.readStream(llmWithTools, messages, iterationId);
+          const result = await streamHandler.readStream(llmWithTools, messages, iterationId, callbacks);
           responseContent = result.content;
           toolCalls = result.toolCalls;
           messages.push(result.message);
         } else {
           // === 非流式模式 ===
-          const response = await llmWithTools.invoke(messages);
+          const response = await llmWithTools.invoke(messages, { callbacks });
           responseContent = typeof response.content === 'string' ? response.content : '';
 
           if (response.tool_calls) {
@@ -259,10 +274,14 @@ export class ReActExecutor {
             tools: toolCalls.map(tc => tc.name),
           });
 
+          const toolSpan = iterSpan ? createSpan(iterSpan, { name: toolCalls.length > 1 ? 'tools-execution' : `tool-${toolCalls[0].name}`, input: { toolCalls } }) : null;
+
           const result = await toolHandler.handleToolCalls(
             toolCalls,
             defaultFinalAnswerTool.name
           );
+
+          if (toolSpan) endSpan(toolSpan, { output: result });
 
           if (result.type === 'final_answer') {
             const totalDuration = Date.now() - startTime;
@@ -281,9 +300,12 @@ export class ReActExecutor {
               timestamp: Date.now(),
             };
             await this.emitEvent(onMessage, finalEvent);
+            if (iterSpan) endSpan(iterSpan, { output: { finalAnswer: result.answer.slice(0, 200) } });
+            if (reactLoopSpan) endSpan(reactLoopSpan, { output: { success: true, finalAnswer: result.answer.slice(0, 200) } });
             return result.answer;
           } else if (result.type === 'continue') {
             messages.push(...result.messages);
+            if (iterSpan) endSpan(iterSpan, { output: { toolCalls: toolCalls.map(tc => tc.name) } });
           }
         } else {
           // 没有工具调用 - 检测空输出以防无限循环
@@ -299,8 +321,10 @@ export class ReActExecutor {
               iteration: completedIterations,
               reason: '连续空输出且无工具调用',
             });
+            if (iterSpan) endSpan(iterSpan, { output: { empty: true } });
             break;
           }
+          if (iterSpan) endSpan(iterSpan, { output: { contentPreview: responseContent.slice(0, 100) } });
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : '未知错误';
@@ -315,6 +339,7 @@ export class ReActExecutor {
         });
         // 使用 SystemMessage 注入错误信息（而非 HumanMessage），避免混淆角色
         messages.push(new SystemMessage(`[系统提示] 上一次迭代发生错误: ${errorMessage}\n请继续尝试完成任务。`));
+        if (iterSpan) endSpan(iterSpan, { output: { error: errorMessage }, level: 'ERROR' });
       }
     }
 
@@ -334,6 +359,7 @@ export class ReActExecutor {
       : '';
 
     const fallbackAnswer = `已达到最大迭代次数(${this.config.maxIterations})。\n\n${lastAIContent}`;
+    if (reactLoopSpan) endSpan(reactLoopSpan, { output: { fallbackAnswer: fallbackAnswer.slice(0, 200) }, level: 'WARNING' });
     await this.emitEvent(onMessage, {
       type: 'final_result',
       content: fallbackAnswer,

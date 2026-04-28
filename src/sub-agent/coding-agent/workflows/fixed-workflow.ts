@@ -6,6 +6,7 @@
 import { createBDDTool } from '../tools/bdd';
 import { createArchitectTool } from '../tools/architect';
 import { createFsCodeGenTool } from '../tools/codegen';
+import { createSpan, endSpan, type LangfuseTrace } from '../../../core/langfuse';
 import type {
   CodingAgentConfig,
   CodingAgentInput,
@@ -29,6 +30,7 @@ export interface WorkflowContext {
   };
   useRag?: boolean;
   onProgress?: CodingAgentInput['onProgress'];
+  langfuseTrace?: LangfuseTrace;
 }
 
 /**
@@ -58,7 +60,7 @@ export async function runFixedWorkflow(
   context: WorkflowContext,
   results: WorkflowResult
 ): Promise<void> {
-  const { requirement, llmConfig, useRag, onProgress } = context;
+  const { requirement, llmConfig, useRag, onProgress, langfuseTrace } = context;
 
   // 推送固定的 Plan 给前端
   const fixedPlan: Plan = {
@@ -79,23 +81,24 @@ export async function runFixedWorkflow(
   });
 
   // 创建三个工具实例
-  const bddTool = createBDDTool(llmConfig);
-  const architectTool = createArchitectTool(llmConfig);
+  const bddTool = createBDDTool(llmConfig, langfuseTrace);
+  const architectTool = createArchitectTool(llmConfig, langfuseTrace);
   const codegenTool = createFsCodeGenTool(
     { ...llmConfig, useRag },
     async event => {
       await emitEvent(onProgress, event as unknown as CodingAgentEvent);
-    }
+    },
+    langfuseTrace
   );
 
   // ========== Step 1: BDD 拆解 ==========
-  await executeBDDStep(fixedPlan, bddTool, requirement, results, onProgress);
+  await executeBDDStep(fixedPlan, bddTool, requirement, results, onProgress, langfuseTrace);
 
   // ========== Step 2: 架构设计 ==========
-  await executeArchitectStep(fixedPlan, architectTool, results, onProgress);
+  await executeArchitectStep(fixedPlan, architectTool, results, onProgress, langfuseTrace);
 
   // ========== Step 3: 代码生成 ==========
-  await executeCodeGenStep(fixedPlan, codegenTool, results, onProgress);
+  await executeCodeGenStep(fixedPlan, codegenTool, results, onProgress, langfuseTrace);
 }
 
 /**
@@ -106,7 +109,8 @@ async function executeBDDStep(
   bddTool: ReturnType<typeof createBDDTool>,
   requirement: string,
   results: WorkflowResult,
-  onProgress?: CodingAgentInput['onProgress']
+  onProgress?: CodingAgentInput['onProgress'],
+  langfuseTrace?: LangfuseTrace
 ): Promise<void> {
   plan.steps[0].status = 'in_progress';
   await emitEvent(onProgress, {
@@ -131,9 +135,11 @@ async function executeBDDStep(
     timestamp: Date.now(),
   });
 
+  const bddSpan = createSpan(langfuseTrace ?? null, { name: 'bdd-decompose', input: { requirement } });
   const bddStartTime = Date.now();
   const bddResultRaw = await bddTool.execute({ requirement });
   const bddDuration = Date.now() - bddStartTime;
+  endSpan(bddSpan, { output: { resultPreview: bddResultRaw.slice(0, 500) } });
 
   await emitEvent(onProgress, {
     type: 'tool_call_result',
@@ -180,7 +186,8 @@ async function executeArchitectStep(
   plan: Plan,
   architectTool: ReturnType<typeof createArchitectTool>,
   results: WorkflowResult,
-  onProgress?: CodingAgentInput['onProgress']
+  onProgress?: CodingAgentInput['onProgress'],
+  langfuseTrace?: LangfuseTrace
 ): Promise<void> {
   plan.steps[1].status = 'in_progress';
   await emitEvent(onProgress, {
@@ -205,10 +212,12 @@ async function executeArchitectStep(
     timestamp: Date.now(),
   });
 
+  const archSpan = createSpan(langfuseTrace ?? null, { name: 'architect-design', input: { bddFeaturesCount: results.bddFeatures.length } });
   const archStartTime = Date.now();
   // 直接程序化传递 BDD 结果
   const archResultRaw = await architectTool.execute({ bdd_scenarios: results.bddFeatures });
   const archDuration = Date.now() - archStartTime;
+  endSpan(archSpan, { output: { resultPreview: archResultRaw.slice(0, 500) } });
 
   await emitEvent(onProgress, {
     type: 'tool_call_result',
@@ -255,7 +264,8 @@ async function executeCodeGenStep(
   plan: Plan,
   codegenTool: ReturnType<typeof createFsCodeGenTool>,
   results: WorkflowResult,
-  onProgress?: CodingAgentInput['onProgress']
+  onProgress?: CodingAgentInput['onProgress'],
+  langfuseTrace?: LangfuseTrace
 ): Promise<void> {
   plan.steps[2].status = 'in_progress';
   await emitEvent(onProgress, {
@@ -280,6 +290,7 @@ async function executeCodeGenStep(
     timestamp: Date.now(),
   });
 
+  const codegenSpan = createSpan(langfuseTrace ?? null, { name: 'codegen', input: { bddCount: results.bddFeatures.length, archCount: results.architecture.length } });
   const codegenStartTime = Date.now();
   // 直接程序化传递 BDD 和架构结果
   let codegenResultRaw: string;
@@ -288,6 +299,7 @@ async function executeCodeGenStep(
       bdd_scenarios: results.bddFeatures,
       architecture: results.architecture,
     });
+    endSpan(codegenSpan, { output: { success: true } });
   } catch (codegenError) {
     const errorMsg = codegenError instanceof Error ? codegenError.message : String(codegenError);
     console.error('[FixedWorkflow] CodeGen tool execution failed:', errorMsg);
@@ -297,6 +309,7 @@ async function executeCodeGenStep(
       'Arch count:',
       results.architecture.length
     );
+    endSpan(codegenSpan, { output: { error: errorMsg }, level: 'ERROR' });
     throw new Error(`代码生成失败: ${errorMsg}`);
   }
   const codegenDuration = Date.now() - codegenStartTime;

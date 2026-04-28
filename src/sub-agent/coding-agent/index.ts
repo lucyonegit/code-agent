@@ -24,6 +24,14 @@ import {
   countProjectFiles,
 } from './tools/fs';
 import { join } from 'path';
+import {
+  createTrace,
+  createSpan,
+  endSpan,
+  createLangfuseCallbackHandler,
+  flushLangfuse,
+  type LangfuseTrace,
+} from '../../core/langfuse';
 import type {
   CodingAgentConfig,
   CodingAgentInput,
@@ -64,15 +72,25 @@ export class CodingAgent {
       baseUrl: this.config.baseUrl,
     };
 
+    // === Langfuse: 创建 Trace（一次请求 = 一个 Trace） ===
+    const trace = createTrace({
+      name: projectId ? 'coding-agent-incremental' : 'coding-agent-run',
+      sessionId: `session_${Date.now()}`,
+      metadata: { projectId, model: this.config.model, provider: this.config.provider },
+      input: { requirement, projectId },
+    });
+
     // === 步骤1: 意图分类 ===
     console.log('[CodingAgent] 开始意图分类...');
-    const intentResult = await classifyIntent(requirement, llmConfig);
+    const intentSpan = createSpan(trace, { name: 'intent-classify', input: { requirement } });
+    const intentResult = await classifyIntent(requirement, llmConfig, trace);
+    endSpan(intentSpan, { output: intentResult });
     console.log('[CodingAgent] 意图分类结果:', intentResult);
 
     // === 步骤2: 根据意图选择执行路径 ===
     if (intentResult.intent === 'simple_query') {
       console.log('[CodingAgent] 检测到简单查询，使用 ReActExecutor 快速响应');
-      return await this.handleSimpleQuery(requirement, projectId, llmConfig, onProgress);
+      return await this.handleSimpleQuery(requirement, projectId, llmConfig, onProgress, trace);
     }
 
     // === 步骤2.5: 需求澄清 ===
@@ -80,7 +98,9 @@ export class CodingAgent {
     if (!projectId) {
       // 仅在新项目（非增量修改）时进行需求澄清
       console.log('[CodingAgent] 开始需求分析...');
-      const clarifyResult = await analyzeRequirement(requirement, llmConfig);
+      const clarifySpan = createSpan(trace, { name: 'requirement-clarify', input: { requirement } });
+      const clarifyResult = await analyzeRequirement(requirement, llmConfig, trace);
+      endSpan(clarifySpan, { output: clarifyResult });
       console.log('[CodingAgent] 需求分析结果:', clarifyResult);
 
       if (clarifyResult.needsClarification && clarifyResult.questions.length > 0) {
@@ -99,12 +119,15 @@ export class CodingAgent {
         const answers = (pauseResult.payload?.answers || {}) as Record<string, string>;
 
         if (!pauseResult.timedOut && Object.keys(answers).length > 0) {
+          const enhanceSpan = createSpan(trace, { name: 'requirement-enhance', input: { requirement, answers } });
           finalRequirement = await enhanceRequirement(
             requirement,
             answers,
             clarifyResult.questions,
-            llmConfig
+            llmConfig,
+            trace
           );
+          endSpan(enhanceSpan, { output: { enhancedRequirement: finalRequirement } });
           console.log(`[CodingAgent] 增强后的需求: ${finalRequirement}`);
         } else {
           console.log('[CodingAgent] 用户未回答或超时，使用原始需求继续');
@@ -128,7 +151,9 @@ export class CodingAgent {
 
     try {
       // 发送友好的开场提示
-      const greeting = await this.generateGreeting(finalRequirement);
+      const greetingSpan = createSpan(trace, { name: 'greeting-gen', input: { requirement: finalRequirement } });
+      const greeting = await this.generateGreeting(finalRequirement, trace);
+      endSpan(greetingSpan, { output: { greeting } });
       await this.emitEvent(onProgress, {
         type: 'normal_message',
         messageId: `greeting_${Date.now()}`,
@@ -145,6 +170,7 @@ export class CodingAgent {
             llmConfig,
             useRag: this.config.useRag,
             onProgress,
+            langfuseTrace: trace,
           },
           results
         );
@@ -156,6 +182,7 @@ export class CodingAgent {
             llmConfig,
             useRag: this.config.useRag,
             onProgress,
+            langfuseTrace: trace,
           },
           results
         );
@@ -181,6 +208,12 @@ export class CodingAgent {
       });
 
       // 直接使用通过事件收集的结果
+      // Langfuse: 结束 Trace 并 flush
+      if (trace) {
+        trace.update({ output: { success: true, summary: results.codeResult?.summary || '' } });
+        await flushLangfuse();
+      }
+
       return {
         success: true,
         bddFeatures: results.bddFeatures,
@@ -192,6 +225,11 @@ export class CodingAgent {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
+      // Langfuse: 记录错误
+      if (trace) {
+        trace.update({ output: { success: false, error: errorMessage }, tags: ['error'] });
+        await flushLangfuse();
+      }
       await this.emitEvent(onProgress, {
         type: 'error',
         message: errorMessage,
@@ -208,8 +246,10 @@ export class CodingAgent {
     requirement: string,
     projectId: string | undefined,
     llmConfig: { model: string; provider: LLMProvider; baseUrl?: string },
-    onProgress?: (event: CodingAgentEvent) => void | Promise<void>
+    onProgress?: (event: CodingAgentEvent) => void | Promise<void>,
+    langfuseTrace?: LangfuseTrace
   ): Promise<CodingAgentResult> {
+
     const searchDir = projectId ? join(process.cwd(), 'projects', projectId) : process.cwd();
     console.log('[CodingAgent] 简单查询模式，搜索目录:', searchDir);
 
@@ -233,6 +273,7 @@ export class CodingAgent {
       baseUrl: llmConfig.baseUrl,
       streaming: true,
       maxIterations,
+      langfuseTrace: langfuseTrace,
       systemPrompt: `你是一个代码助手。用户会询问关于代码的问题，你需要使用工具来查找和分析代码，然后给出清晰的答案。
 
 项目信息：
@@ -308,6 +349,12 @@ export class CodingAgent {
       });
     }
 
+    // Langfuse: 结束 Trace
+    if (langfuseTrace) {
+      langfuseTrace.update({ output: { success: true, isQuery: true, answerPreview: answer.slice(0, 200) } });
+      await flushLangfuse();
+    }
+
     // 返回结果
     return {
       success: true,
@@ -333,7 +380,7 @@ export class CodingAgent {
    * 使用 LLM 生成友好的开场提示
    * 通过 tool calling 方式获取结果，避免不同模型返回格式不一致的问题
    */
-  private async generateGreeting(requirement: string): Promise<string> {
+  private async generateGreeting(requirement: string, langfuseTrace?: LangfuseTrace): Promise<string> {
     const { tool } = await import('@langchain/core/tools');
     const { z } = await import('zod');
 
@@ -359,12 +406,14 @@ export class CodingAgent {
     const llmWithTools = llm.bindTools([answerTool]);
 
     console.log(`[CodingAgent] Invoking LLM for greeting with tool calling...`);
+    const callbackHandler = createLangfuseCallbackHandler(langfuseTrace ?? null);
+    const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
     const response = await llmWithTools.invoke([
       new SystemMessage(
         '你是一个友好的编程助手。根据用户的需求，可能是新生成一个项目的需求，也有可能是对原有项目的修改，你判断用户的意图，生成一条简短的中文确认消息（20字以内），告诉用户你即将开始为他们做什么。语气要友好专业，可以使用1个emoji。你必须使用 answer 工具来返回消息。示例："好的，我来帮您生成登录页 ✨"'
       ),
       new HumanMessage(`用户需求: ${requirement}`),
-    ]);
+    ], { callbacks });
 
     // 从 tool_calls 中提取结果
     const toolCalls = response.tool_calls;

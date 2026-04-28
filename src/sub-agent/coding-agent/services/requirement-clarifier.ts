@@ -6,6 +6,7 @@
 
 import { createLLM } from '../../../core/BaseLLM';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { createLangfuseCallbackHandler, type LangfuseTrace } from '../../../core/langfuse';
 import type { LLMProvider } from '../../../types/index';
 
 /**
@@ -37,7 +38,8 @@ export async function analyzeRequirement(
     model: string;
     provider: LLMProvider;
     baseUrl?: string;
-  }
+  },
+  langfuseTrace?: LangfuseTrace
 ): Promise<RequirementAnalysis> {
   const { tool } = await import('@langchain/core/tools');
   const { z } = await import('zod');
@@ -67,6 +69,8 @@ export async function analyzeRequirement(
   const llm = createLLM(config);
   const llmWithTools = llm.bindTools([analyzeTool]);
 
+  const callbackHandler = createLangfuseCallbackHandler(langfuseTrace ?? null);
+  const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
   const response = await llmWithTools.invoke([
     new SystemMessage(`你是一个需求分析专家。分析用户提供的软件开发需求，判断是否足够清晰可以直接开始开发。
 
@@ -90,7 +94,7 @@ export async function analyzeRequirement(
 
 你必须使用 analyze_requirement 工具返回结果。`),
     new HumanMessage(`用户需求: ${requirement}`),
-  ]);
+  ], { callbacks });
 
   const toolCalls = response.tool_calls;
   if (toolCalls && toolCalls.length > 0) {
@@ -122,7 +126,8 @@ export async function enhanceRequirement(
     model: string;
     provider: LLMProvider;
     baseUrl?: string;
-  }
+  },
+  langfuseTrace?: LangfuseTrace
 ): Promise<string> {
   // 如果没有回答，直接返回原始需求
   if (Object.keys(answers).length === 0) {
@@ -152,6 +157,8 @@ export async function enhanceRequirement(
   const llm = createLLM(config);
   const llmWithTools = llm.bindTools([answerTool]);
 
+  const callbackHandler = createLangfuseCallbackHandler(langfuseTrace ?? null);
+  const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
   const response = await llmWithTools.invoke([
     new SystemMessage(
       '你是一个需求整合专家。将用户的原始需求和补充回答融合成一份完整、清晰的需求描述。' +
@@ -160,7 +167,7 @@ export async function enhanceRequirement(
     new HumanMessage(
       `原始需求: ${originalRequirement}\n\n用户补充信息:\n${qaContext}`
     ),
-  ]);
+  ], { callbacks });
 
   const toolCalls = response.tool_calls;
   if (toolCalls && toolCalls.length > 0) {

@@ -42,7 +42,7 @@ export class PlannerController {
       const {
         goal,
         conversationId = `plan_${Date.now()}`,
-        tools: toolNames = ['get_weather', 'calculator', 'web_search']
+        tools: toolNames = ['get_weather', 'calculator', 'web_search', 'browse_url', 'write_article']
       } = dto;
 
       if (!goal) {

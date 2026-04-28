@@ -25,6 +25,7 @@ import {
   createDeleteFileTool,
 } from '../fs';
 import { LogLevel } from '../../../../core/ReActLogger';
+import { type LangfuseTrace } from '../../../../core/langfuse';
 import {
   CODE_GEN_SYSTEM_PROMPT,
   buildUserPrompt,
@@ -60,7 +61,8 @@ export interface LLMConfig {
  */
 export function createFsCodeGenTool(
   config: LLMConfig,
-  onProgress?: CodeGenProgressCallback
+  onProgress?: CodeGenProgressCallback,
+  langfuseTrace?: LangfuseTrace
 ): Tool {
   return {
     name: 'generate_code_fs',
@@ -146,6 +148,7 @@ export function createFsCodeGenTool(
         systemPrompt: CODE_GEN_SYSTEM_PROMPT,
         streaming: true,
         logLevel: LogLevel.DEBUG,
+        langfuseTrace,
       });
 
       // 会话持久化存储

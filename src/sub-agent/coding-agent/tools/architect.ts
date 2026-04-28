@@ -9,6 +9,7 @@ import { createLLM } from '../../../core/BaseLLM';
 import { ARCHITECT_MAX_TOKENS } from '../../../core/react/constants';
 import { CODING_AGENT_PROMPTS } from '../config/prompt';
 import type { Tool, LLMProvider } from '../../../types/index';
+import { createLangfuseCallbackHandler, type LangfuseTrace, type LangfuseSpan } from '../../../core/langfuse';
 import {
   BDDFeatureSchema,
   BDDResultSchema,
@@ -29,7 +30,7 @@ export interface LLMConfig {
  * 创建架构设计工具
  * 使用强类型 BDDResultSchema 作为参数，确保 LLM 传递正确的数据结构
  */
-export function createArchitectTool(config: LLMConfig): Tool {
+export function createArchitectTool(config: LLMConfig, langfuseTrace?: LangfuseTrace | LangfuseSpan | null): Tool {
   return {
     name: 'design_architecture',
     description: `基于 BDD 场景设计项目文件架构。
@@ -85,12 +86,15 @@ scenarios 数组中每个场景必须包含：id, title, given, when, then 字�
         tool_choice: { type: 'function', function: { name: 'output_architecture' } },
       });
 
+      const callbackHandler = createLangfuseCallbackHandler(langfuseTrace ?? null);
+      const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
+
       const response = await llmWithTool.invoke([
         new SystemMessage(CODING_AGENT_PROMPTS.ARCHITECT_GENERATOR_PROMPT),
         new HumanMessage(
           `BDD 规范:\n${JSON.stringify(bddData, null, 2)}\n\n请基于以上 BDD 规范设计项目架构。`
         ),
-      ]);
+      ], { callbacks });
 
       if (response.tool_calls && response.tool_calls.length > 0) {
         const toolArgs = response.tool_calls[0].args as { files: unknown };

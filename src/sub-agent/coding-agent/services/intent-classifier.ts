@@ -4,6 +4,7 @@
 
 import { createLLM } from '../../../core/BaseLLM';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { createLangfuseCallbackHandler, type LangfuseTrace } from '../../../core/langfuse';
 import type { LLMProvider } from '../../../types/index';
 
 export type IntentType = 'simple_query' | 'code_generation' | 'code_modification';
@@ -23,7 +24,8 @@ export async function classifyIntent(
     model: string;
     provider: LLMProvider;
     baseUrl?: string;
-  }
+  },
+  langfuseTrace?: LangfuseTrace
 ): Promise<IntentClassificationResult> {
   const { tool } = await import('@langchain/core/tools');
   const { z } = await import('zod');
@@ -47,6 +49,8 @@ export async function classifyIntent(
   const llm = createLLM(config);
   const llmWithTools = llm.bindTools([classifyTool]);
 
+  const callbackHandler = createLangfuseCallbackHandler(langfuseTrace ?? null);
+  const callbacks = callbackHandler ? [callbackHandler as any] : undefined;
   const response = await llmWithTools.invoke([
     new SystemMessage(`你是一个意图分类器。分析用户需求，判断属于哪种类型：
 
@@ -69,7 +73,7 @@ export async function classifyIntent(
 
 你必须使用 classify_intent 工具返回结果。`),
     new HumanMessage(`用户需求: ${requirement}`),
-  ]);
+  ], { callbacks });
 
   const toolCalls = response.tool_calls;
   if (toolCalls && toolCalls.length > 0) {

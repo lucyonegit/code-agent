@@ -15,6 +15,7 @@ import {
 } from '../../core/conversation';
 import type { Tool, ReActEvent, Plan } from '../../types';
 import { ToolsService } from '../tools/tools.service';
+import { createTrace, flushLangfuse } from '../../core/langfuse';
 
 @Injectable()
 export class PlannerService {
@@ -95,6 +96,13 @@ export class PlannerService {
       onPlanUpdate(plan);
     };
 
+    const trace = createTrace({
+      name: 'planner-task',
+      sessionId: conversationId,
+      metadata: { goal, toolNames },
+      input: { goal, toolNames }
+    });
+
     // 创建 PlannerExecutor
     const planner = new PlannerExecutor({
       plannerModel: 'claude-sonnet-4-20250514',
@@ -102,6 +110,7 @@ export class PlannerService {
       provider: 'claude',
       maxIterationsPerStep: 30,
       maxRePlanAttempts: 3,
+      langfuseTrace: trace,
     });
 
     // 执行并返回结果
@@ -112,6 +121,15 @@ export class PlannerService {
       onPlanUpdate: wrappedOnPlanUpdate,
       initialMessages: unifiedHistory,
     });
+
+    if (trace) {
+      if (result.success) {
+        trace.update({ output: result });
+      } else {
+        trace.update({ output: result, tags: ['error'] });
+      }
+      await flushLangfuse();
+    }
 
     // 检查 artifacts 目录并发送 artifact_event
     const artifacts = await this.conversationManager.listArtifacts(conversationId);

@@ -42,10 +42,10 @@ export function getLangfuse(): Langfuse | null {
     langfuseInstance = new Langfuse({
       publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
       secretKey: process.env.LANGFUSE_SECRET_KEY!,
-      baseUrl: process.env.LANGFUSE_BASE_URL || 'http://localhost:3100',
+      baseUrl: process.env.LANGFUSE_BASE_URL || 'http://localhost:3000',
     });
     console.log('[Langfuse] ✅ 客户端已初始化', {
-      baseUrl: process.env.LANGFUSE_BASE_URL || 'http://localhost:3100',
+      baseUrl: process.env.LANGFUSE_BASE_URL || 'http://localhost:3000',
     });
   }
 

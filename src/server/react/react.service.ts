@@ -14,6 +14,7 @@ import {
 } from '../../core/conversation';
 import type { Tool, ReActEvent } from '../../types';
 import { ToolsService } from '../tools/tools.service';
+import { llmConfig } from '../../config/llm.config';
 
 @Injectable()
 export class ReactService {
@@ -72,10 +73,11 @@ export class ReactService {
 
     // 创建 ReActExecutor
     const executor = new ReActExecutor({
-      model: 'claude-sonnet-4-20250514',
-      provider: 'claude',
+      model: llmConfig.react.model,
+      provider: llmConfig.react.provider,
       streaming: true,
       maxIterations: 30,
+      langfuseTrace: true
     });
 
     // 执行并返回结果

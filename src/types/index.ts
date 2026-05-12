@@ -246,7 +246,7 @@ export type ReActEventHandler = (event: ReActEvent) => void | Promise<void>;
 /**
  * LLM 提供商类型
  */
-export type LLMProvider = 'openai' | 'tongyi' | 'openai-compatible' | 'claude' | 'gemini';
+export type LLMProvider = 'openai' | 'tongyi' | 'openai-compatible' | 'claude' | 'gemini' | 'kimi';
 
 /**
  * ReActExecutor 的配置项

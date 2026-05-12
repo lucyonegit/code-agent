@@ -9,7 +9,7 @@ dotenvConfig();
  * 公司 LiteLLM 服务配置
  */
 const LITE_LLM_CONFIG = {
-  baseUrl: 'https://openkey.bantouyan.com/v1',
+  baseUrl: process.env.LITE_LLM_BASE_URL || '',
   apiKey: process.env.LITE_LLM_APIKEY || '',
 };
 
@@ -75,6 +75,15 @@ export function createLLM(config: LLMConfig): ChatOpenAI {
     case 'gemini':
       // 使用 Gemini（通过 LiteLLM 代理）
       // 模型名格式: gemini-1.5-pro, gemini-1.5-flash 等
+      return new ChatOpenAI({
+        ...baseConfig,
+        configuration: {
+          baseURL: baseUrl,
+        },
+      });
+
+    case 'kimi':
+      // 使用 Kimi（通过 LiteLLM 代理）
       return new ChatOpenAI({
         ...baseConfig,
         configuration: {

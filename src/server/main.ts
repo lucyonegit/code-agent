@@ -7,6 +7,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { isLangfuseEnabled } from '../core/langfuse';
 
 const PORT = 3002; // 使用不同端口进行并行测试
 
@@ -35,6 +36,10 @@ async function bootstrap() {
   await app.listen(PORT);
 
   console.log(`🚀 NestJS Agent Server running at http://localhost:${PORT}`);
+
+  if (isLangfuseEnabled()) {
+    console.log('📊 Langfuse 监控已启用');
+  }
   console.log('');
   console.log('可用接口:');
   console.log(`  GET  http://localhost:${PORT}/health           - 健康检查`);

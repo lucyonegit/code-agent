@@ -16,6 +16,7 @@ import {
 import type { Tool, ReActEvent, Plan } from '../../types';
 import { ToolsService } from '../tools/tools.service';
 import { createTrace, flushLangfuse } from '../../core/langfuse';
+import { llmConfig } from '../../config/llm.config.js';
 
 @Injectable()
 export class PlannerService {
@@ -105,9 +106,9 @@ export class PlannerService {
 
     // 创建 PlannerExecutor
     const planner = new PlannerExecutor({
-      plannerModel: 'claude-sonnet-4-20250514',
-      executorModel: 'claude-sonnet-4-20250514',
-      provider: 'claude',
+      plannerModel: llmConfig.planner.model,
+      executorModel: llmConfig.planner.model,
+      provider: llmConfig.planner.provider,
       maxIterationsPerStep: 30,
       maxRePlanAttempts: 3,
       langfuseTrace: trace,

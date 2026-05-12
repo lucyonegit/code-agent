@@ -113,7 +113,7 @@ export interface CodingAgentConfig {
   /** LLM 模型 */
   model: string;
   /** LLM 提供商 */
-  provider: 'openai' | 'tongyi' | 'openai-compatible' | 'claude';
+  provider: 'openai' | 'tongyi' | 'openai-compatible' | 'claude' | 'gemini' | 'kimi';
   /** API Key */
   apiKey?: string;
   /** Base URL */

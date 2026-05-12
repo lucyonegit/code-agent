@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { CodingAgent } from '../../sub-agent/coding-agent';
 import type { CodingAgentEvent } from '../../sub-agent/types';
 import { persistProject } from '../../sub-agent/coding-agent/services/template-generator';
+import { llmConfig } from '../../config/llm.config';
 
 @Injectable()
 export class CodingService {
@@ -20,8 +21,8 @@ export class CodingService {
   ) {
     // 创建 CodingAgent
     const agent = new CodingAgent({
-      model: 'claude-sonnet-4-20250514',
-      provider: 'claude',
+      model: llmConfig.coding.model,
+      provider: llmConfig.coding.provider,
       useRag,
     });
 

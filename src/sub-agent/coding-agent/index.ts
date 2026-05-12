@@ -42,6 +42,7 @@ import type {
   CodeGenResult,
 } from '../types/index';
 import type { LLMProvider } from '../../types/index';
+import { llmConfig as globalLlmConfig } from '../../config/llm.config';
 
 /**
  * CodingAgent - 基于固定工作流的编码智能体
@@ -268,8 +269,8 @@ export class CodingAgent {
 
     // 创建 ReActExecutor
     const reactExecutor = new ReActExecutor({
-      model: "gemini-2.5-flash",
-      provider: "gemini",
+      model: globalLlmConfig.simpleQuery.model,
+      provider: globalLlmConfig.simpleQuery.provider,
       baseUrl: llmConfig.baseUrl,
       streaming: true,
       maxIterations,
@@ -397,8 +398,8 @@ export class CodingAgent {
     );
 
     const llm = createLLM({
-      model: 'gemini-2.5-flash',
-      provider: 'gemini',
+      model: globalLlmConfig.greeting.model,
+      provider: globalLlmConfig.greeting.provider,
       baseUrl: this.config.baseUrl,
     });
 

@@ -51,6 +51,7 @@ export function createLLM(config: LLMConfig): ChatOpenAI {
     ...(config.maxTokens && { maxTokens: config.maxTokens }),
   };
 
+  console.log(`创建 LLM 实例，模型: ${config.model}, 提供商: ${config.provider}, 基础配置:`, baseConfig);
   switch (config.provider) {
     case 'tongyi':
       // 使用通义千问的 OpenAI 兼容端点（通过 LiteLLM 代理）
@@ -101,6 +102,7 @@ export function createLLM(config: LLMConfig): ChatOpenAI {
 
     case 'openai':
     default:
+      console.warn(`未知的 LLM 提供商 "${config.provider}"，默认使用 OpenAI 兼容端点（通过 LiteLLM 代理）`);
       // 所有请求都通过公司 LiteLLM 代理
       return new ChatOpenAI({
         ...baseConfig,

@@ -65,6 +65,7 @@ export class ReactController {
       res.end();
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
+      console.error('[ReactController] 执行 ReAct 时出错:', error);
       sendSSE('error', { message });
       res.end();
     }

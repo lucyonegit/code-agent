@@ -24,8 +24,8 @@ function getEnv(key: string, fallback: string): string {
   return process.env[key] ?? fallback;
 }
 
-const DEFAULT_MODEL = getEnv('DEFAULT_MODEL', 'gemini-3-flash-preview');
-const DEFAULT_PROVIDER = getEnv('DEFAULT_PROVIDER', 'gemini') as LLMProvider;
+const DEFAULT_MODEL = getEnv('DEFAULT_MODEL', 'mimo-v2.5-pro');
+const DEFAULT_PROVIDER = getEnv('DEFAULT_PROVIDER', 'openai') as LLMProvider;
 
 export const llmConfig = {
   /** Coding Agent 默认配置 */

@@ -15,6 +15,7 @@ import {
 import type { Tool, ReActEvent } from '../../types';
 import { ToolsService } from '../tools/tools.service';
 import { llmConfig } from '../../config/llm.config';
+import { createTrace, flushLangfuse } from '../../core/langfuse';
 
 @Injectable()
 export class ReactService {
@@ -71,13 +72,23 @@ export class ReactService {
       }
     };
 
+    console.log('llmConfig', llmConfig);
+
+    // 创建 Langfuse trace（可选，未配置时自动跳过）
+    const trace = createTrace({
+      name: 'react-task',
+      sessionId: conversationId,
+      metadata: { input, toolCount: tools.length },
+      input: { input, toolCount: tools.length },
+    });
+
     // 创建 ReActExecutor
     const executor = new ReActExecutor({
       model: llmConfig.react.model,
       provider: llmConfig.react.provider,
       streaming: true,
       maxIterations: 30,
-      langfuseTrace: true
+      langfuseTrace: trace,
     });
 
     // 执行并返回结果
@@ -87,6 +98,12 @@ export class ReactService {
       initialMessages: unifiedHistory,
       onMessage: wrappedOnMessage,
     });
+
+    // 更新 trace 输出
+    if (trace) {
+      trace.update({ output: { result: result.slice(0, 500) } });
+      await flushLangfuse();
+    }
 
     // 检查 artifacts 目录并发送 artifact_event
     const artifacts = await this.conversationManager.listArtifacts(conversationId);

@@ -117,7 +117,7 @@ export function createSpan(
     metadata?: Record<string, unknown>;
   }
 ) {
-  if (!parent) return null;
+  if (!parent || typeof parent.span !== 'function') return null;
 
   return parent.span({
     name: options.name,
